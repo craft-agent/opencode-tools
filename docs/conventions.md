@@ -717,10 +717,24 @@ The settings, messages, README, skills and code use one vocabulary:
   the caller that started it, and only an entry point can say who that is.
   This adds to the context under "The core contract": `src/core/` still knows
   no harness, and compares a caller only for equality.
-- **Each entry point supplies it.** The Hermes plugin takes it from the
-  conversation a call belongs to. The MCP server takes the `caller` setting,
-  else the client's name from its initialization. The command line takes the
-  `caller` setting, else `cli`.
+- **Each entry point supplies it.** The MCP server takes the `caller` setting,
+  else the client's name from its initialization, else `mcp`, decided at the
+  first call and kept for the connection, so a caller never changes under its
+  sessions. The command line takes the `caller` setting, else `cli`. The
+  Hermes plugin passes the id of the Hermes session a call belongs to, else
+  `hermes`, and has no `caller` setting: its conversations are what it tells
+  apart. A conversation that is reset gets a new session id and no longer
+  sees its runs;
+  [#10](https://github.com/craft-agent/opencode-tools/issues/10) settles
+  whether the conversation's route replaces the id.
+- **A session id that cannot be passed as it is becomes its SHA-256.** One
+  over 200 characters, or holding a character a command line cannot carry or
+  would trim, is passed as `sha256:` and the digest: cutting it would make
+  two sessions one caller. The plugin's listing of the tools at its start
+  passes `hermes`, so no variable of another entry point can stop it.
+- **`caller` is a setting of the entry points, as `toolsets` is.** It reaches
+  a tool as the context's `caller` and never among its options, so no entry
+  point can leave it out. It is at most 200 characters, and blank is unset.
 - **A harness that cannot tell its conversations apart is one caller.** An MCP
   server over standard input serves one client and is told nothing of its
   conversations, so every conversation of that client shares its runs.
@@ -752,6 +766,11 @@ The settings, messages, README, skills and code use one vocabulary:
   agent with the `read-only` policy, and `build`, its own `build` agent with
   the `write` policy. They are the agents every OpenCode has, so the tools
   work as installed. Configured `roles` replace both.
+- **A role that breaks the shape is refused when the settings are read**, as
+  `invalid_argument` naming the role: a name outside the pattern, a missing
+  `agent` or `policy`, a `model` not written as above, a key that is none of
+  the four, or more than 20 roles. An entry point that started with a broken
+  role would fail at the first run instead, far from the mistake.
 - **Code keys on the policy, never on a role's or an agent's name.**
 
 ### The ruleset
@@ -821,10 +840,14 @@ the last match wins; a subagent's session copies its parent's ruleset.
 ### Settings of opencode-tools
 
 - **A nested setting has the type `json`.** `roles` and `rules` are maps, and
-  a flat setting reaches no entry point as one. It is an object in a
-  harness's own configuration and JSON text in a flag or a variable, checked
-  by the package and refused as `invalid_argument` when it cannot be used.
-  This adds to the types under "Toolsets and settings".
+  a flat setting reaches no entry point as one. Its value is a JSON object: a
+  mapping in the Hermes plugin's configuration, which forwards it as JSON
+  text, and JSON text in a flag or a variable. Text that is not JSON, and
+  JSON that is not an object, are refused as `invalid_argument`, naming the
+  flag or variable; an object with no entries counts as unset, as an empty
+  list does. What the object must hold is the setting's own to check, when
+  the settings are read. This adds to the types under "Toolsets and
+  settings".
 - **Every setting but two is unset by default**: `caller`, `note`, `rules`,
   `never_approve`, `read_roots`, `output_roots` and `protected_dirs`. `roles`
   and `wait_seconds` have the defaults above.
