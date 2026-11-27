@@ -24,6 +24,7 @@ export { isWithin } from "./paths"
 export { defaultRuntime, localUrl, runtimeOf, type ServiceEndpoint, type ToolRuntime } from "./runtime"
 export { DEFAULT_ROLES, MAX_ROLES, parseModel, rolesOf, type Policy, type Role, type Roles } from "./role"
 export { SERVICE_ENV, serviceEnv } from "./service/env"
+export { serviceError, type ServiceErrorOptions } from "./service/errors"
 export { MIN_SERVICE_VERSION, checkServiceVersion } from "./service/version"
 export { ANY_TARGET, writeTargets } from "./targets"
 export {
