@@ -16,8 +16,8 @@ import { PROJECT_PROFILE, type EntryProfile } from "./profile"
 /** Who asks the person before an administrative tool acts: the harness, or the tool through the client's form. */
 export type ConfirmMode = "harness" | "elicitation"
 
-/** The tool settings, the values of the package's own settings (`options`, possibly empty) and the grants' context. */
-export type ToolEntrySettings = ToolSettings & { options: ToolOptions; grants: GrantContext }
+/** The tool settings, the values of the package's own settings (`options`, possibly empty), the grants' context and the caller, when one is set. */
+export type ToolEntrySettings = ToolSettings & { options: ToolOptions; grants: GrantContext; caller?: string }
 
 /** The tool settings, who confirms, the values of the package's own settings and the grants' context. */
 export type EntrySettings = ToolEntrySettings & { confirm: ConfirmMode }
@@ -30,9 +30,13 @@ const GRANT_KEY_SUFFIX = "GRANT_KEY"
 const MIN_GRANT_KEY_LENGTH = 32
 const GRANTS_DIR_NAME = "grants"
 
-type OptionName = "toolsets" | "read_only" | "tools" | "exclude_tools" | "confirm" | "unattended" | "grants_dir"
+/** The most characters a caller may have. */
+export const MAX_CALLER_LENGTH = 200
 
-const GRANT_OPTION_NAMES = ["unattended", "grants_dir"] as const satisfies readonly OptionName[]
+type OptionName =
+  "toolsets" | "read_only" | "tools" | "exclude_tools" | "confirm" | "unattended" | "grants_dir" | "caller"
+
+const TARGET_OPTION_NAMES = ["unattended", "grants_dir", "caller"] as const satisfies readonly OptionName[]
 
 /** A setting's command-line flag and the end of its environment variable, which follows the profile's prefix; a boolean flag takes no value. */
 type Option = { flag: string; envSuffix: string; boolean?: true }
@@ -45,6 +49,7 @@ const OPTIONS: Record<OptionName, Option> = {
   confirm: { flag: "--confirm", envSuffix: "CONFIRM" },
   unattended: { flag: "--unattended", envSuffix: "UNATTENDED", boolean: true },
   grants_dir: { flag: "--grants-dir", envSuffix: "GRANTS_DIR" },
+  caller: { flag: "--caller", envSuffix: "CALLER" },
 }
 
 function profileOptions(profile: EntryProfile): NonNullable<EntryProfile["options"]> {
@@ -354,25 +359,45 @@ function grantsFromText(flags: Record<string, string>, env: Environment, profile
   )
 }
 
+/** A caller as given by something other than a setting, such as a client's name: trimmed, cut to MAX_CALLER_LENGTH characters, and `undefined` when blank or not text. */
+export function callerText(text: unknown): string | undefined {
+  return typeof text === "string" ? nonBlank([...text.trim()].slice(0, MAX_CALLER_LENGTH).join("")) : undefined
+}
+
+/** The caller the `caller` setting names: trimmed, blank is unset, and one over MAX_CALLER_LENGTH characters is `invalid_argument`. */
+function callerSetting(given: SettingText | undefined): string | undefined {
+  const text = nonBlank(given?.text)
+  if (given === undefined || text === undefined) return undefined
+  if ([...text].length > MAX_CALLER_LENGTH) {
+    throw new ToolError("invalid_argument", `${given.source} must be at most ${MAX_CALLER_LENGTH} characters.`)
+  }
+  return text
+}
+
 /**
- * Reads the values of the package's own settings and the grants' context from
- * the command line and environment of a command that takes no other setting
- * (`target`): any other flag is `invalid_argument`.
+ * Reads the values of the package's own settings, the grants' context and the
+ * caller from the command line and environment of a command that takes no
+ * other setting (`target`): any other flag is `invalid_argument`.
  */
 export function parseTargetSettings(
   argv: string[],
   env: Record<string, string | undefined>,
   profile: EntryProfile = PROJECT_PROFILE,
-): Pick<ToolEntrySettings, "options" | "grants"> {
+): Pick<ToolEntrySettings, "options" | "grants" | "caller"> {
   const flags = readFlags(argv, profile)
   const known = profileOptions(profile)
   const other = Object.keys(flags).find(
-    (name) => !(name in known) && !GRANT_OPTION_NAMES.some((grant) => grant === name),
+    (name) => !(name in known) && !TARGET_OPTION_NAMES.some((allowed) => allowed === name),
   )
   if (other !== undefined) {
     throw new ToolError("invalid_argument", `Unknown option "${settingOptions(profile)[other]!.flag}".`)
   }
-  return { options: optionsFrom(flags, env, profile), grants: grantsFromText(flags, env, profile) }
+  const caller = callerSetting(settingText("caller", flags, env, profile))
+  return {
+    options: optionsFrom(flags, env, profile),
+    grants: grantsFromText(flags, env, profile),
+    ...(caller !== undefined && { caller }),
+  }
 }
 
 /**
@@ -404,6 +429,8 @@ export function parseSettings(
   if (excluded) settings.exclude_tools = splitList(excluded.text)
   const confirm = value("confirm")
   if (confirm) settings.confirm = parseConfirm(confirm.text.trim(), confirm.source)
+  const caller = callerSetting(value("caller"))
+  if (caller !== undefined) settings.caller = caller
   return settings
 }
 
