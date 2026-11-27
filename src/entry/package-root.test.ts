@@ -17,6 +17,6 @@ describe("packageRoot", () => {
   })
 
   test("reads a percent-encoded path back", () => {
-    expect(packageRoot(pathToFileURL("/with space/pkg/dist/opencode.js"))).toBe("/with space/pkg")
+    expect(packageRoot(pathToFileURL("/with space/pkg/dist/cli.js"))).toBe("/with space/pkg")
   })
 })
