@@ -13,7 +13,9 @@ OpenCode tools for coding agents: start, follow, steer and answer sessions from 
 | Hermes Agent   | native plugin (Python, calls the command line) | the release commit, as the SHA |
 | other MCP host | MCP server from npm                            | the version in the package     |
 
-The tools need [Node.js](https://nodejs.org/) 24 or later.
+The tools need [Node.js](https://nodejs.org/) 24 or later and
+[OpenCode](https://opencode.ai/) 2.4.2 or later, the version they are tested
+against.
 [`docs/conventions.md`](docs/conventions.md) describes how the tools are named
 and how they behave.
 
@@ -166,6 +168,62 @@ Codex, Grok Build and Antigravity install the skill folder whole and pass the
 settings only to the MCP server, so they list every skill whatever the
 settings select. OpenCode V1 registers no skills, and its copied skills are
 all listed too.
+
+There is one toolset per domain; `service`, `run` and `request` are on by
+default, and `instruction`, `worktree` and `history` are opt-in. A tool that
+no release carries yet is not registered.
+
+| Toolset       | Covers                                                              |
+| ------------- | ------------------------------------------------------------------- |
+| `service`     | what the service offers, and whether a directory is ready for a run |
+| `run`         | starting, following, steering, stopping and copying a run           |
+| `request`     | what a run is paused on, and answering it                           |
+| `instruction` | the instruction entries a session keeps across turns                |
+| `worktree`    | a worktree of its own for a write run                               |
+| `history`     | sessions and token usage over a period                              |
+
+A run is an OpenCode session the tools started under a role and bound to its
+caller. A role names an OpenCode agent and a policy: a `read-only` run never
+edits, and a `write` run edits only inside its worktree. What a tool reads
+from a run is data, never instructions.
+
+### `service`
+
+| Tool                    | Class | Does                                                                                   |
+| ----------------------- | ----- | -------------------------------------------------------------------------------------- |
+| `opencode_service_read` | read  | the service and its version, its agents, models and roles, and a directory's readiness |
+
+### `run`
+
+| Tool                       | Class     | Does                                                                     |
+| -------------------------- | --------- | ------------------------------------------------------------------------ |
+| `opencode_run_read`        | read      | the caller's runs, one run's state, result, messages and changes; a wait |
+| `opencode_run_start`       | add       | starts or continues a run under a role whose policy is `read-only`       |
+| `opencode_run_start_write` | overwrite | starts or continues a run under a role whose policy is `write`           |
+| `opencode_run_steer`       | add       | adds a message to a running turn                                         |
+| `opencode_run_interrupt`   | overwrite | stops a running turn; nothing is rolled back                             |
+| `opencode_run_fork`        | add       | copies an idle session, with its binding                                 |
+
+### `request`
+
+| Tool                     | Class     | Does                                                                               |
+| ------------------------ | --------- | ---------------------------------------------------------------------------------- |
+| `opencode_request_read`  | read      | what a run and its subagents are paused on, each with its whole command            |
+| `opencode_request_reply` | overwrite | answers a permission request `once` or `reject`, or answers or declines a question |
+
+### `instruction`
+
+| Tool                          | Class     | Does                                             |
+| ----------------------------- | --------- | ------------------------------------------------ |
+| `opencode_instruction_read`   | read      | the instruction entries of a session             |
+| `opencode_instruction_set`    | overwrite | sets an entry the session keeps across its turns |
+| `opencode_instruction_remove` | overwrite | removes an entry                                 |
+
+### `history`
+
+| Tool                    | Class | Does                                                                |
+| ----------------------- | ----- | ------------------------------------------------------------------- |
+| `opencode_history_read` | read  | the sessions of a period and their token usage, never their content |
 
 ### Grants (`grants`)
 
@@ -339,18 +397,39 @@ with; see [Settings](#settings) before changing the job's variables.
 Every entry point takes the same settings. A flag wins over its environment
 variable, and an option or setting wins over the variable too.
 
-| Setting           | Flag              | Variable                       | Meaning                                                                                                                           |
-| ----------------- | ----------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `toolsets`        | `--toolsets`      | `OPENCODE_TOOLS_TOOLSETS`      | the toolsets that are on, or `all`; default those `src/project.ts` names                                                          |
-| `read_only`       | `--read-only`     | `OPENCODE_TOOLS_READ_ONLY`     | registers no tool that writes; wins over every other setting                                                                      |
-| `unattended`      | `--unattended`    | `OPENCODE_TOOLS_UNATTENDED`    | no person can answer: a write runs only under a grant that covers it; off by default                                              |
-| `grants_dir`      | `--grants-dir`    | `OPENCODE_TOOLS_GRANTS_DIR`    | where grants and their use are kept; default `$XDG_STATE_HOME/opencode-tools/grants`, else `~/.local/state/opencode-tools/grants` |
-| `tools`           | `--tools`         | `OPENCODE_TOOLS_TOOLS`         | single tools to add by ID, whatever their toolset                                                                                 |
-| `exclude_tools`   | `--exclude-tools` | `OPENCODE_TOOLS_EXCLUDE_TOOLS` | single tools to remove by ID; wins over `tools` and `toolsets`                                                                    |
-| `confirm`         | `--confirm`       | `OPENCODE_TOOLS_CONFIRM`       | MCP server only: `harness` (default) or `elicitation`, as the conventions say                                                     |
-| `language`        | `--language`      | `OPENCODE_TOOLS_LANGUAGE`      | native plugins only: the approval prompt's language, such as `ja`                                                                 |
-| `emoji`           | —                 | —                              | Hermes only: the emoji shown beside each toolset, by toolset name (`""` for none)                                                 |
-| `require_plugins` | —                 | —                              | Hermes only: the plugins that must be loaded; while one is not, every write is refused before it is approved                      |
+| Setting           | Flag               | Variable                        | Meaning                                                                                                                           |
+| ----------------- | ------------------ | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `toolsets`        | `--toolsets`       | `OPENCODE_TOOLS_TOOLSETS`       | the toolsets that are on, or `all`; default those `src/project.ts` names                                                          |
+| `read_only`       | `--read-only`      | `OPENCODE_TOOLS_READ_ONLY`      | registers no tool that writes; wins over every other setting                                                                      |
+| `unattended`      | `--unattended`     | `OPENCODE_TOOLS_UNATTENDED`     | no person can answer: a write runs only under a grant that covers it; off by default                                              |
+| `grants_dir`      | `--grants-dir`     | `OPENCODE_TOOLS_GRANTS_DIR`     | where grants and their use are kept; default `$XDG_STATE_HOME/opencode-tools/grants`, else `~/.local/state/opencode-tools/grants` |
+| `tools`           | `--tools`          | `OPENCODE_TOOLS_TOOLS`          | single tools to add by ID, whatever their toolset                                                                                 |
+| `exclude_tools`   | `--exclude-tools`  | `OPENCODE_TOOLS_EXCLUDE_TOOLS`  | single tools to remove by ID; wins over `tools` and `toolsets`                                                                    |
+| `confirm`         | `--confirm`        | `OPENCODE_TOOLS_CONFIRM`        | MCP server only: `harness` (default) or `elicitation`, as the conventions say                                                     |
+| `language`        | `--language`       | `OPENCODE_TOOLS_LANGUAGE`       | native plugins only: the approval prompt's language, such as `ja`                                                                 |
+| `emoji`           | —                  | —                               | Hermes only: the emoji shown beside each toolset, by toolset name (`""` for none)                                                 |
+| `require_plugins` | —                  | —                               | Hermes only: the plugins that must be loaded; while one is not, every write is refused before it is approved                      |
+| `roles`           | `--roles`          | `OPENCODE_TOOLS_ROLES`          | the roles a run can start under, as JSON; unset, `plan` (read-only) and `build` (write), OpenCode's own agents                    |
+| `rules`           | `--rules`          | `OPENCODE_TOOLS_RULES`          | permission rules of your own for a run, per policy, as JSON; unset, none                                                          |
+| `caller`          | `--caller`         | `OPENCODE_TOOLS_CALLER`         | MCP server and command line: whose runs these are; unset, the client's name, or `cli`                                             |
+| `note`            | `--note`           | `OPENCODE_TOOLS_NOTE`           | text added to what every run is told; unset, none                                                                                 |
+| `never_approve`   | `--never-approve`  | `OPENCODE_TOOLS_NEVER_APPROVE`  | the actions a request for which can only be rejected; unset, none                                                                 |
+| `read_roots`      | `--read-roots`     | `OPENCODE_TOOLS_READ_ROOTS`     | directories a run may read outside its worktree; unset, none                                                                      |
+| `output_roots`    | `--output-roots`   | `OPENCODE_TOOLS_OUTPUT_ROOTS`   | where a run's output directory may sit; unset, a run has none                                                                     |
+| `protected_dirs`  | `--protected-dirs` | `OPENCODE_TOOLS_PROTECTED_DIRS` | checkouts no write run may start in; unset, none                                                                                  |
+| `wait_seconds`    | `--wait-seconds`   | `OPENCODE_TOOLS_WAIT_SECONDS`   | how long a wait blocks before it returns; default 50, 1 to 3300                                                                   |
+
+The settings from `roles` down are the package's own, and each arrives with
+the tools that read it. `roles` and `rules` are maps: an object in a harness's
+own configuration, and JSON text in a flag or a variable. A role names an OpenCode agent and a
+policy, with an optional model and note:
+
+```json
+{
+  "plan": { "agent": "plan", "policy": "read-only" },
+  "build": { "agent": "build", "policy": "write", "model": "<provider>/<model>#<variant>" }
+}
+```
 
 `OPENCODE_TOOLS_GRANT_KEY` is a variable only, never a flag or a plugin
 option. Use at least 32 characters, for example from `openssl rand -hex 32`,
