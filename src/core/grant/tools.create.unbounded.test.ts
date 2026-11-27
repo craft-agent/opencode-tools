@@ -37,7 +37,7 @@ let ctx: ToolContext
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "grant-tools-unbounded-"))
-  ctx = { cwd: dir, grants: { unattended: false, dir, key: KEY, now: () => NOW } }
+  ctx = { cwd: dir, caller: "test", grants: { unattended: false, dir, key: KEY, now: () => NOW } }
 })
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true })

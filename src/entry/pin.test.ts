@@ -13,7 +13,7 @@ import { MAX_FACTS, MAX_TEXT_LENGTH, MAX_VALUE_LENGTH } from "../core/describe"
 import { shownDescription } from "./description"
 import { approvalOf, checkPin } from "./pin"
 
-const CTX: ToolContext = { cwd: "/work" }
+const CTX: ToolContext = { cwd: "/work", caller: "test" }
 const ID = "demo_note_write"
 const input = z.object({ name: z.string().default("todo") })
 

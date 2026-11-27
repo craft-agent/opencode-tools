@@ -10,7 +10,7 @@ import {
 } from "./describe"
 import type { ToolContext, ToolSpec } from "./tool"
 
-const CTX: ToolContext = { cwd: "/work" }
+const CTX: ToolContext = { cwd: "/work", caller: "test" }
 const input = z.object({ name: z.string().default("item") })
 
 type Describer = NonNullable<ToolSpec<typeof input>["describe"]>

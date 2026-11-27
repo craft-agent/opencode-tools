@@ -54,7 +54,7 @@ function grant(overrides: Partial<Grant> = {}): Grant {
 }
 
 function context(now: Date = NOW): ToolContext {
-  return { cwd: base, grants: { unattended: true, dir: store.dir, key: KEY, now: () => now } }
+  return { cwd: base, caller: "test", grants: { unattended: true, dir: store.dir, key: KEY, now: () => now } }
 }
 
 const ARGS = { path: "/work/a.md" }

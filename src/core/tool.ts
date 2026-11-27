@@ -64,6 +64,8 @@ export type ToolOptions = Readonly<Record<string, ToolOptionValue>>
 export type ToolContext = {
   /** The working directory the call runs in. */
   cwd: string
+  /** Whoever the call is made for: an opaque text the entry point supplies. A tool compares it for equality and nothing else. */
+  caller: string
   /** A directory that is never the caller's working tree (where these tools are installed); a tool must refuse to treat it as the caller's tree. */
   ownDir?: string
   /** The package's own settings the call can read, such as a path to a file of rules. */

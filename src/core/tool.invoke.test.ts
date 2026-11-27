@@ -6,7 +6,7 @@ import { StepErrors, confirmWrite, defineTool, invoke, type ToolContext, type To
 const input = z.object({ count: z.number().int(), label: z.string().optional() })
 const output = z.object({ total: z.number() })
 
-const CTX: ToolContext = { cwd: process.cwd() }
+const CTX: ToolContext = { cwd: process.cwd(), caller: "test" }
 
 async function thrown(promise: Promise<unknown>): Promise<unknown> {
   return promise.then(

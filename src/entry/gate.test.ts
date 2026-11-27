@@ -4,7 +4,7 @@ import { ToolError, abortError, isToolError, type ToolContext, type ToolSpec } f
 import { gateRefusal } from "./gate"
 import { approvalOf, checkPin } from "./pin"
 
-const CTX: ToolContext = { cwd: "/work" }
+const CTX: ToolContext = { cwd: "/work", caller: "test" }
 const input = z.object({ name: z.string().default("todo") })
 
 type Gate = NonNullable<ToolSpec["gate"]>

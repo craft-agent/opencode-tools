@@ -33,6 +33,9 @@ const LANGUAGE_FLAG = "--language"
 const HARNESS_LANGUAGE_FLAG = "--harness-language"
 const PIN_FLAG = "--pin"
 
+/** The caller of a call when no `--caller` or `<envPrefix>_CALLER` names one. */
+const CLI_CALLER = "cli"
+
 /** What a command line needs from its surroundings; `main.ts` wires the process, a test supplies its own. */
 export type CliIo = {
   /** The tools the command line can select from. */
@@ -58,7 +61,7 @@ export type CliIo = {
 }
 
 /** What a call's context takes from the command line: the package's own settings and the grants' context. */
-type CallSettings = Pick<ToolEntrySettings, "options" | "grants">
+type CallSettings = Pick<ToolEntrySettings, "options" | "grants" | "caller">
 
 type Command =
   | { name: "list"; selected: ToolSpec[] }
@@ -97,6 +100,7 @@ function parseCommand(argv: string[], io: Pick<CliIo, "specs" | "env" | "profile
       selected: selectTools(io.specs, settings, profile.toolsets),
       options: settings.options,
       grants: settings.grants,
+      caller: settings.caller,
     }
   }
   const [name, ...args] = argv
@@ -173,6 +177,7 @@ async function runTool(command: Extract<Command, { name: "run" }>, io: CliIo): P
     const args = await readArguments(io)
     const ctx = {
       cwd: command.cwd,
+      caller: command.caller ?? CLI_CALLER,
       ownDir: io.ownDir,
       options: command.options,
       grants: command.grants,
@@ -197,6 +202,7 @@ async function targetOf(command: Extract<Command, { name: "target" }>, io: CliIo
     const args = await readArguments(io)
     const ctx = {
       cwd: command.cwd,
+      caller: command.caller ?? CLI_CALLER,
       ownDir: io.ownDir,
       options: command.options,
       grants: command.grants,

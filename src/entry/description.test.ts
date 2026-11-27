@@ -4,7 +4,7 @@ import { MAX_VALUE_LENGTH, type CallDescription, type ToolContext, type ToolSpec
 import { approvalPrompt, permissionDescription } from "./description"
 import { visible } from "./visible"
 
-const CTX: ToolContext = { cwd: "/work", ownDir: "/own" }
+const CTX: ToolContext = { cwd: "/work", caller: "test", ownDir: "/own" }
 const input = z.object({ name: z.string().default("x") })
 
 type Describer = NonNullable<ToolSpec<typeof input>["describe"]>

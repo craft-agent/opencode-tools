@@ -89,6 +89,8 @@ export async function runCleanups(): Promise<void> {
 }
 
 export type ClientSetup = {
+  /** The name the client reports; defaults to `test`. */
+  name?: string
   capabilities?: ClientCapabilities
   /** What the client answers to an elicitation. */
   answer?: ElicitResult
@@ -110,7 +112,10 @@ export async function connect(
   const elicited: unknown[] = []
   const logs: string[] = []
   const seen = { rootsRequests: 0 }
-  const mcpClient = new Client({ name: "test", version: "0.0.0" }, { capabilities: client.capabilities ?? {} })
+  const mcpClient = new Client(
+    { name: client.name ?? "test", version: "0.0.0" },
+    { capabilities: client.capabilities ?? {} },
+  )
   if (client.capabilities?.elicitation) {
     mcpClient.setRequestHandler(ElicitRequestSchema, async (request) => {
       elicited.push(request.params)

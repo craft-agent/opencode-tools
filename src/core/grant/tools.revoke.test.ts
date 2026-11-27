@@ -25,7 +25,7 @@ let ctx: ToolContext
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "grant-tools-revoke-"))
-  ctx = { cwd: dir, grants: { unattended: true, dir, key: KEY } }
+  ctx = { cwd: dir, caller: "test", grants: { unattended: true, dir, key: KEY } }
 })
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true })
@@ -67,7 +67,7 @@ test("the prompt names only the grant", async () => {
 })
 
 test("revoke requires setup and a well-formed id", async () => {
-  await expect(invoke(revoke!, { id: GRANT.id }, { cwd: dir })).rejects.toMatchObject({
+  await expect(invoke(revoke!, { id: GRANT.id }, { cwd: dir, caller: "test" })).rejects.toMatchObject({
     code: "forbidden",
     details: { reason: "not_set_up" },
   })

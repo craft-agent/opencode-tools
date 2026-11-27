@@ -32,7 +32,7 @@ let ctx: ToolContext
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "grant-tools-read-"))
-  ctx = { cwd: dir, grants: { unattended: true, dir, key: KEY, now: () => NOW } }
+  ctx = { cwd: dir, caller: "test", grants: { unattended: true, dir, key: KEY, now: () => NOW } }
 })
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true })
@@ -96,7 +96,7 @@ test("both methods need the key and context", async () => {
     await expect(
       invoke(read!, { method }, { ...ctx, grants: { ...ctx.grants!, key: undefined } }),
     ).rejects.toMatchObject({ code: "forbidden", details: { reason: "no_key" } })
-    await expect(invoke(read!, { method }, { cwd: dir })).rejects.toMatchObject({
+    await expect(invoke(read!, { method }, { cwd: dir, caller: "test" })).rejects.toMatchObject({
       code: "forbidden",
       details: { reason: "not_set_up" },
     })

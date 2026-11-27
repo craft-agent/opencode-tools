@@ -3,7 +3,7 @@ import { z } from "zod"
 import { callDescription, MAX_HEADLINE_VALUES, MAX_VALUE_LENGTH, MAX_VALUE_TEMPLATE_LENGTH } from "./describe"
 import type { ToolContext, ToolSpec } from "./tool"
 
-const CTX: ToolContext = { cwd: "/work" }
+const CTX: ToolContext = { cwd: "/work", caller: "test" }
 const input = z.object({})
 
 type Describer = NonNullable<ToolSpec<typeof input>["describe"]>

@@ -23,12 +23,15 @@ import {
 } from "../core"
 import { errorBody } from "../entry/errors"
 import { PROJECT_PROFILE } from "../entry/profile"
-import type { EntrySettings } from "../entry/settings"
+import { callerText, type EntrySettings } from "../entry/settings"
 import { PROJECT } from "../project"
 import { elicitationConfirm } from "./confirm"
 import { createWorkingDirResolver, SANDBOX_STATE_META } from "./roots"
 
 const DEFAULT_VERSION = "0.0.0"
+
+/** The caller of a call when neither the settings nor the client's name give one. */
+const MCP_CALLER = "mcp"
 
 export type ServerOptions = {
   /** The directory a call runs in when the client names no usable call directory or root; defaults to `process.cwd`. */
@@ -70,7 +73,9 @@ function describeTool(spec: ToolSpec): Tool {
  * `confirm: "elicitation"` an administrative tool asks
  * through a form where the client offers one; a person-only tool does so
  * whatever `confirm` says. Every call carries `settings.grants`, so a write
- * runs while `unattended` only under a grant that covers it.
+ * runs while `unattended` only under a grant that covers it. Every call also
+ * carries a caller: the `caller` setting, else the connected client's name,
+ * else `mcp`, resolved at the first call and kept for the connection.
  */
 export function createServer(specs: ToolSpec[], settings: EntrySettings, options: ServerOptions = {}): Server {
   const log = options.log ?? ((entry: string) => process.stderr.write(`${entry}\n`))
@@ -82,6 +87,7 @@ export function createServer(specs: ToolSpec[], settings: EntrySettings, options
   const toolsets = options.toolsets ?? PROJECT_PROFILE.toolsets
   const selected = new Map(selectTools(specs, settings, toolsets).map((spec) => [spec.id, spec]))
   const tools = [...selected.values()].map(describeTool)
+  let caller: string | undefined
 
   server.setRequestHandler(ListToolsRequestSchema, () => ({ tools }))
 
@@ -93,6 +99,7 @@ export function createServer(specs: ToolSpec[], settings: EntrySettings, options
         settings.confirm === "elicitation" || isPersonOnly(spec) ? elicitationConfirm(server, extra.signal) : undefined
       const ctx: ToolContext = {
         cwd: await workingDir(extra.signal, request.params._meta),
+        caller: (caller ??= settings.caller ?? callerText(server.getClientVersion()?.name) ?? MCP_CALLER),
         ownDir: options.ownDir,
         options: settings.options,
         grants: settings.grants,

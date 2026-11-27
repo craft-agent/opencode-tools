@@ -30,7 +30,9 @@ describe("sizeFact", () => {
       input: z.object({}),
       describe: () => ({ facts: [sizeFact(1), sizeFact(42)] }),
     } as Pick<ToolSpec, "input" | "describe">
-    expect(await callDescription(spec, {}, { cwd: "/work" })).toEqual({ facts: [sizeFact(1), sizeFact(42)] })
+    expect(await callDescription(spec, {}, { cwd: "/work", caller: "test" })).toEqual({
+      facts: [sizeFact(1), sizeFact(42)],
+    })
   })
 })
 
