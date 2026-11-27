@@ -1,17 +1,16 @@
 {
-  "name": "@craftsamo/agent-tool-starter",
-  "version": "0.6.0",
-  "private": true,
-  "description": "A starter for tool packages that coding agents call: one implementation delivered to every harness.",
+  "name": "@craftsamo/opencode-tools",
+  "version": "0.0.0",
+  "description": "OpenCode tools for coding agents: start, follow, steer and answer sessions from another harness.",
   "author": "craftsamo",
   "license": "LicenseRef-AGPL-3.0-Commons-Clause",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/craftsamo/agent-tool-starter.git"
+    "url": "git+https://github.com/craft-agent/opencode-tools.git"
   },
-  "homepage": "https://github.com/craftsamo/agent-tool-starter#readme",
-  "bugs": "https://github.com/craftsamo/agent-tool-starter/issues",
-  "mcpName": "io.github.craftsamo/agent-tool-starter",
+  "homepage": "https://github.com/craft-agent/opencode-tools#readme",
+  "bugs": "https://github.com/craft-agent/opencode-tools/issues",
+  "mcpName": "io.github.craft-agent/opencode-tools",
   "type": "module",
   "main": "dist/opencode.js",
   "exports": {
@@ -19,8 +18,8 @@
     "./opencode": "./dist/opencode.js"
   },
   "bin": {
-    "agent-tool-starter": "dist/mcp.js",
-    "agent-tool-starter-cli": "dist/cli.js"
+    "opencode-tools": "dist/mcp.js",
+    "opencode-tools-cli": "dist/cli.js"
   },
   "files": [
     "dist",
@@ -33,7 +32,7 @@
     "mcp_config.json",
     "plugin.yaml",
     "__init__.py",
-    "src/hermes/agent_tool_starter_hermes",
+    "src/hermes/opencode_tools_hermes",
     "!**/__pycache__",
     "!**/*.pyc"
   ],
