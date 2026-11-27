@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { ToolError, isAbortError, isToolError, type JsonValue } from "./errors"
 import { finishGrantUse, grantCheck, type GrantContext } from "./grant/guard"
+import type { ToolRuntime } from "./runtime"
 import { PATTERN_CHARACTERS } from "./targets"
 
 /** The toolsets of a package: every name, in the order `all` lists them, and the ones on when a setting names none. */
@@ -78,6 +79,8 @@ export type ToolContext = {
   confirm?(request: ConfirmRequest): Promise<boolean>
   /** Grants, for a call no person can be asked about; absent or not `unattended`, nothing changes. */
   grants?: GrantContext
+  /** What the call takes from its surroundings; absent, the real ones. A test supplies its own. */
+  runtime?: ToolRuntime
 }
 
 /**
