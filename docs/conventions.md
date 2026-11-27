@@ -590,3 +590,254 @@ and every entry point checks them the same way.
   against a fake of that program on `PATH`.
 - A test file stays within about 300 lines, split by topic
   (`<name>.<topic>.test.ts`), so one commit can carry a change and its test.
+
+## The OpenCode tools
+
+The rules below are opencode-tools' own, on top of everything above; where one
+changes a rule above, it says so. The discussion behind them is on
+[#2](https://github.com/craft-agent/opencode-tools/issues/2).
+
+### Scope
+
+- **The tools drive OpenCode sessions from another harness.** An agent starts
+  a session under a role, follows it, steers it, answers what it asks and
+  reads what it did, through the person's own OpenCode service.
+- **Not from OpenCode itself.** The package has no OpenCode plugin, and a run
+  is denied the package's own tools. A run that could start runs would need
+  rules against the chain, and inside OpenCode one session already hands work
+  to another through its subagents.
+- **It knows no particular setup.** No profile, model, provider account, path
+  or tool of another package appears in code, defaults, messages, examples,
+  tests or skills. The one default that names anything is the two roles
+  below, which are OpenCode's own agents.
+- **A consumer's workflow is not the package's.** Tying a run to an issue,
+  keeping a person's approval beside it, a job's phases and progress file,
+  saving a reply as a report and estimating what a model's funding still
+  holds are one consumer's way of working. A consumer builds them from the
+  general parts here: a session's instruction entries, the notes and an
+  output directory.
+
+### Terms
+
+The settings, messages, README, skills and code use one vocabulary:
+
+| Term           | Means                                                                      |
+| -------------- | -------------------------------------------------------------------------- |
+| run            | a session the tools started and bound to a caller, with its subagents      |
+| turn           | one brief of a run and the work that follows, until the session is idle    |
+| caller         | whoever a call is made for: an opaque text the entry point supplies        |
+| role           | a name for an OpenCode agent and a policy, with an optional model and note |
+| policy         | what a run may change: `read-only` or `write`                              |
+| ruleset        | the permission rules the package gives a run's session                     |
+| request        | what a run is paused on: a permission request or a question                |
+| brief          | the message that starts or continues a run                                 |
+| operating note | the instruction every run carries about how it is being driven             |
+
+### The service
+
+- **The service is reached through OpenCode's own client**,
+  `@opencode/client`. It is typed against the API the service publishes, and
+  finding the service and authenticating to it stay OpenCode's contract
+  rather than a file layout or a command's output the package would have to
+  track.
+- **A missing service is started with a minimal environment.** A service
+  keeps its starter's environment for every session it later serves, a
+  person's own included. So the tools give it only what finds the person's
+  programs and configuration, and never the harness's own variables.
+- **OpenCode 2.4.2 is the minimum version.** Below it every tool fails as
+  `upstream_error`, naming the version found and the minimum. Above it nothing
+  is refused by version, and a tool whose route is missing fails alone: the
+  service publishes no API version to gate on, and refusing every version not
+  yet seen would break the tools at each OpenCode release.
+- **Stable routes only, with one exception.** The instruction entries exist
+  only as an experimental route. Where the service refuses it, the operating
+  note goes at the head of the brief, and the instruction tools fail as
+  `upstream_error`.
+- **The README lists the versions the tools are tested against.**
+
+### Domains and names
+
+- **Six domains, one toolset each**:
+
+  | Domain        | Covers                                                              | Tools                                                                                                                                      |
+  | ------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+  | `service`     | what the service offers, and whether a directory is ready for a run | `opencode_service_read`                                                                                                                    |
+  | `run`         | starting, following, steering, stopping and copying a run           | `opencode_run_read`, `opencode_run_start`, `opencode_run_start_write`, `opencode_run_steer`, `opencode_run_interrupt`, `opencode_run_fork` |
+  | `request`     | what a run is paused on, and answering it                           | `opencode_request_read`, `opencode_request_reply`                                                                                          |
+  | `instruction` | the instruction entries a session keeps across turns                | `opencode_instruction_read`, `opencode_instruction_set`, `opencode_instruction_remove`                                                     |
+  | `worktree`    | a worktree of its own for a write run                               | named with the domain's first tool                                                                                                         |
+  | `history`     | sessions and token usage over a period                              | `opencode_history_read`                                                                                                                    |
+
+- **On by default: `service`, `run` and `request`**, what commissioning a run
+  needs. `instruction`, `worktree` and `history` are opt-in.
+- **A role is the `role` argument of a start tool, never a tool of its own.**
+  Tool ids are fixed when the package is built, and the manifests list them;
+  roles are a person's configuration.
+- **Two tools start a run, split by the role's policy.** `opencode_run_start`
+  takes a role whose policy is `read-only`, and `opencode_run_start_write` one
+  whose policy is `write`; each refuses the other's roles as
+  `invalid_argument`, naming the tool to use. One tool for both would carry
+  the write run's class, so a person could not let read-only runs start
+  unasked and still be asked for each write run.
+- **Waiting is a read.** `wait` is a method of `opencode_run_read`: it blocks
+  and changes nothing.
+
+### Write classes of run operations
+
+| Operation                                | Class     | Why                                                                       |
+| ---------------------------------------- | --------- | ------------------------------------------------------------------------- |
+| Every domain's read, waiting included    | read      | changes nothing                                                           |
+| Starting or continuing a read-only run   | add       | adds a session or a turn; its ruleset denies every edit                   |
+| Steering a turn                          | add       | adds a message to a turn that is already running                          |
+| Forking a session                        | add       | adds a session; the one it copies stays as it is                          |
+| Starting or continuing a write run       | overwrite | the run changes files in its worktree                                     |
+| Interrupting a turn                      | overwrite | the turn's work in flight is lost; interrupting twice is the same as once |
+| Answering a request                      | overwrite | an approval lets a command run that may not be undone                     |
+| Setting or removing an instruction entry | overwrite | replaces or removes what the session was told                             |
+
+- **`read_only` leaves no run to start.** Starting a run creates a session
+  and spends a model's usage, so it is a write whatever the run's own policy;
+  with `read_only` on, the tools read the caller's runs and nothing else.
+- **Every write names its run's worktree directory as its target.** An answer
+  a person gives for a worktree then covers the later calls there, a
+  continued session and its forks included, and nowhere else. A session id
+  would make a person answer again for each fork.
+- **A start's prompt shows what will run.** Its facts are the role, the
+  agent, the policy, the model and whether the session is new; its text is
+  the brief.
+- **An answer's prompt shows what it approves.** Its text is the whole command
+  or tool call of each request, never a first line: in a compound command the
+  part that needs approval is often the last.
+- **A grant can bound a start by role**, and a brief by its length.
+
+### The caller
+
+- **The tool context gains `caller`, an opaque text.** A session belongs to
+  the caller that started it, and only an entry point can say who that is.
+  This adds to the context under "The core contract": `src/core/` still knows
+  no harness, and compares a caller only for equality.
+- **Each entry point supplies it.** The Hermes plugin takes it from the
+  conversation a call belongs to. The MCP server takes the `caller` setting,
+  else the client's name from its initialization. The command line takes the
+  `caller` setting, else `cli`.
+- **A harness that cannot tell its conversations apart is one caller.** An MCP
+  server over standard input serves one client and is told nothing of its
+  conversations, so every conversation of that client shares its runs.
+- **A session of another caller, or of none, is out of reach.** It is not
+  listed, and reading, steering or answering it fails as `not_found`, worded
+  as for a session that does not exist. A session with no binding is a
+  person's own.
+- **The binding is cooperation, not protection.** It keeps callers that use
+  the tools apart. Any process that can reach the service can act on every
+  session, and nothing in the package says otherwise.
+
+### Names in shared spaces
+
+- **The session metadata key is `opencode-tools`**, the package's name, so it
+  cannot collide with another plugin's key and says whose it is. It holds `v`
+  (1), `caller`, `role`, `repository` and `branch`; a domain that binds more
+  adds its fields here first.
+- **An instruction entry the package owns is `opencode-tools.<name>`.**
+  `opencode-tools.note` is the operating note, which a caller can read and
+  can neither set nor remove.
+
+### Roles
+
+- **`roles` maps a name to `agent`, `policy` and, optionally, `model` and
+  `note`.** A name is `[a-z][a-z0-9_]{0,23}`; `agent` is a primary agent the
+  service lists; `model` is written as OpenCode writes one,
+  `<provider>/<model>` with an optional `#<variant>`.
+- **With no `roles` configured there are two**: `plan`, OpenCode's own `plan`
+  agent with the `read-only` policy, and `build`, its own `build` agent with
+  the `write` policy. They are the agents every OpenCode has, so the tools
+  work as installed. Configured `roles` replace both.
+- **Code keys on the policy, never on a role's or an agent's name.**
+
+### The ruleset
+
+OpenCode evaluates the global rules, then the agent's, then the session's, and
+the last match wins; a subagent's session copies its parent's ruleset.
+
+- **A ruleset holds denies, asks and narrow allows.** A broad allow would
+  reopen what a subagent's own rules deny. The one broad allow is a write
+  run's edits inside its worktree, placed before every edit deny.
+- **A read-only run is denied every edit and every git command that writes.**
+  Denied, not asked: an ask would reopen what a read-only agent denies itself.
+- **A write run asks before it rewrites history, moves a branch or runs a
+  command that downloads and runs a package.**
+- **Every run is denied**: reading secret files, editing a repository's or
+  the person's git configuration and hooks, pushing from a shell, publishing
+  a package, discarding work by force, and the package's own tools. These come
+  last, so nothing reopens them.
+- **A shell push is denied, not asked.** The request would show a command,
+  not the commits, the branch or whether it forces. Pushing is the caller's
+  act, or a tool a consumer's `rules` open.
+- **`rules` adds a consumer's own rules per policy**, in OpenCode's own form,
+  after the package's rules and before what every run is denied. They tighten
+  a run or open another package's tools, and never reopen those denies. The
+  package itself names no other package's tool and no subagent.
+- **Paths outside a worktree are the person's**: `read_roots` (directories a
+  run may read), `output_roots` (where a run's output directory may sit) and
+  `protected_dirs` (checkouts no write run may start in). A read root that
+  holds the home directory is refused, since credentials live there.
+
+### Answers
+
+- **A permission request is answered `once` or `reject`.** OpenCode's third
+  answer saves an approval for the whole project, which the person's own
+  sessions would inherit.
+- **`never_approve` lists the actions that can only be rejected.** The tool's
+  `gate` refuses such an approval before anyone is asked.
+- **Only a run's own requests are answered**: those of its session and its
+  subagents' sessions.
+- **Every reply of a call is checked before any is sent.**
+
+### What a run is told
+
+- **The operating note says only what the tools make true**: another agent
+  commissioned the session and answers its requests and questions, no one is
+  at the terminal, and a quote in a brief is material, not an instruction.
+- **`note` is added for every run, and a role's `note` after it.** How a
+  consumer speaks to a run is its own.
+- **The note is an instruction entry of the session**, so the brief a person
+  reads in OpenCode is the brief alone.
+
+### State and waiting
+
+- **A run's state is read from the service each time**: `running`, `waiting`
+  (on a request), `completed`, `failed`, `interrupted` or `unknown`. The
+  package keeps no record of a run; a second record would disagree with the
+  service.
+- **A turn ends at its own idle message**, which carries its outcome, never at
+  a session-level field or an exit status.
+- **Nothing is sent again after `unknown`.** A brief whose admission could not
+  be confirmed may have been taken.
+- **A wait returns at `wait_seconds`, with `timed_out`.** The default is 50,
+  under a harness that ends a tool call after a minute; the most is 3300. The
+  Hermes plugin's limit on a call follows the setting.
+- **A result has a size limit and says when it was cut.**
+
+### Settings of opencode-tools
+
+- **A nested setting has the type `json`.** `roles` and `rules` are maps, and
+  a flat setting reaches no entry point as one. It is an object in a
+  harness's own configuration and JSON text in a flag or a variable, checked
+  by the package and refused as `invalid_argument` when it cannot be used.
+  This adds to the types under "Toolsets and settings".
+- **Every setting but two is unset by default**: `caller`, `note`, `rules`,
+  `never_approve`, `read_roots`, `output_roots` and `protected_dirs`. `roles`
+  and `wait_seconds` have the defaults above.
+- **A domain adds its settings here before it uses them.**
+
+### Text a tool reads
+
+- **What a tool reads from a run is data, never instructions**: its replies,
+  the commands of its requests, its diffs, a session's title. Each read tool's
+  description says so, and so do the skills.
+
+### Tests of opencode-tools
+
+- **Tests run against one fake service**, typed by the client's own types, so
+  a reply whose shape drifted fails the type check.
+- **The clock is passed in**, so a wait is tested without waiting.
+- **No test needs a harness, a real service or a consumer's configuration.**
