@@ -641,15 +641,53 @@ The settings, messages, README, skills and code use one vocabulary:
   finding the service and authenticating to it stay OpenCode's contract
   rather than a file layout or a command's output the package would have to
   track.
+- **The client is pinned to one version and bundled into the built files.**
+  It promises no compatibility between versions, and its dependencies serve
+  entry points the package never loads, so a consumer installs nothing for
+  it. The package uses its root and its `/service` entry point only.
+- **OpenCode is what the tools drive, not a harness they are delivered to**,
+  so `src/core/` names it, in code and in messages.
+- **Every tool starts a missing service, a read included.** A check of a
+  directory's readiness that cannot ask a stopped service about its agents
+  and models answers nothing. Starting it changes nothing a person keeps, so
+  `read_only` still starts it, and a result says when the call did.
+- **The service is found with the client's `discover` and started by the
+  package itself**: `opencode serve --service` through the runner, left
+  running, then found again within 30 seconds or the call fails as
+  `upstream_error`. It is the one program the tools do not stop when its
+  call ends, unlike every program under "Programs a tool runs": a service
+  serves the calls that follow. A call that is cancelled before the start
+  starts nothing. The client's `ensure` and `stop` are never called.
+  `ensure` hands the service this process's whole environment, replaces a
+  running service of another version when given one, and ends one that
+  misses three checks; either would end a person's own sessions.
 - **A missing service is started with a minimal environment.** A service
   keeps its starter's environment for every session it later serves, a
   person's own included. So the tools give it only what finds the person's
-  programs and configuration, and never the harness's own variables.
+  programs and configuration, and never the harness's own variables: `PATH`,
+  `HOME`, `USER`, `LOGNAME`, `SHELL`, `LANG`, `LANGUAGE`, `LC_ALL`,
+  `LC_CTYPE`, `LC_MESSAGES`, `TERM`, `TMPDIR`, `TZ`, `XDG_CONFIG_HOME`,
+  `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME` and `XDG_RUNTIME_DIR`.
+  They are named one by one, in `toolVariables`, so a harness that forwards
+  only named variables forwards them. What else a service needs a person
+  adds in OpenCode's own service configuration; the package has no setting
+  for it, and one can be added without breaking anything.
+- **Every request has a time limit of ten seconds and ends with the call's
+  abort signal.** The client has no limit of its own. The limit covers the
+  whole request, so a tool that reads a stream sets its own.
+- **A failure maps to the codes above**: a missing session to `not_found`; a
+  request the service calls invalid to `invalid_argument`; a refused or
+  timed-out connection, a service that is starting or stopping, a status the
+  route does not declare, a refusal without a name (as of a route this
+  service does not have) and a reply that cannot be read to `upstream_error`.
+  No message and no result carries the service's address or its password.
 - **OpenCode 2.4.2 is the minimum version.** Below it every tool fails as
   `upstream_error`, naming the version found and the minimum. Above it nothing
   is refused by version, and a tool whose route is missing fails alone: the
   service publishes no API version to gate on, and refusing every version not
-  yet seen would break the tools at each OpenCode release.
+  yet seen would break the tools at each OpenCode release. A development
+  build's version, written `0.0.0-…` or not as `x.y.z` at all, is not refused
+  either.
 - **Stable routes only, with one exception.** The instruction entries exist
   only as an experimental route. Where the service refuses it, the operating
   note goes at the head of the brief, and the instruction tools fail as
@@ -862,6 +900,13 @@ the last match wins; a subagent's session copies its parent's ruleset.
 ### Tests of opencode-tools
 
 - **Tests run against one fake service**, typed by the client's own types, so
-  a reply whose shape drifted fails the type check.
+  a reply whose shape drifted fails the type check. It is a `fetch` given to
+  the client, in the test's own process, and holds what the units so far
+  read; a unit adds the routes it needs.
+- **The tool context has an optional `runtime`**: the environment, the clock,
+  how the service is found, the `fetch` its requests go through and how a
+  program is left running. An entry point leaves it out and gets the real
+  ones; a test supplies its own. This adds to the context under "The core
+  contract".
 - **The clock is passed in**, so a wait is tested without waiting.
 - **No test needs a harness, a real service or a consumer's configuration.**
