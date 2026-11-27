@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from . import project
+from .caller import CALLER_FALLBACK
 from .runtime import CliError, Runtime, Unavailable
 
 #: How long ``list`` may take, in seconds.
@@ -63,7 +64,7 @@ def list_tools(runtime: Runtime, flags: list[str]) -> list[ToolInfo]:
         Unavailable: the command line failed or answered with something else than a tool list.
     """
     try:
-        result = runtime.run(["list", *flags], timeout=LIST_TIMEOUT_SECONDS)
+        result = runtime.run(["list", *flags, f"--caller={CALLER_FALLBACK}"], timeout=LIST_TIMEOUT_SECONDS)
     except CliError as error:
         raise Unavailable(str(error)) from error
     if result.code != 0:

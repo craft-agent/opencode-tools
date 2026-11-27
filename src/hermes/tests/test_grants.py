@@ -57,7 +57,7 @@ class GrantCallsTest(FakeCliCase):
                 calls = [call for call in self.calls() if call["argv"][0] in ("target", "run")]
                 self.assertEqual(
                     [call["argv"] for call in calls],
-                    [[command, "demo_thing_create", "--cwd", CWD, *flags] for command in ("target", "run")],
+                    [[command, "demo_thing_create", "--cwd", CWD, *flags, "--caller=hermes"] for command in ("target", "run")],
                 )
 
     def test_a_bad_boolean_registers_nothing(self) -> None:
@@ -88,7 +88,7 @@ class GrantCallsTest(FakeCliCase):
             {"action": "block", "message": 'forbidden: Create a grant first.\n{"reason":"no_grant"}'},
         )
         [call] = [call for call in self.calls() if call["argv"][0] == "target"]
-        self.assertEqual(call["argv"], ["target", "demo_thing_create", "--cwd", CWD, "--unattended"])
+        self.assertEqual(call["argv"], ["target", "demo_thing_create", "--cwd", CWD, "--unattended", "--caller=hermes"])
 
 
 class PersonOnlyTest(FakeCliCase):

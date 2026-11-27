@@ -6,7 +6,15 @@ import json
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from .approval import GUARD_FAILED_TEXT, PIN_ARGUMENT, Guard, error_text, parse_pin, run_arguments
+from .approval import (
+    GUARD_FAILED_TEXT,
+    PIN_ARGUMENT,
+    Guard,
+    error_text,
+    parse_pin,
+    run_arguments,
+)
+from .caller import caller_flags
 from .context import PluginContext
 from .listing import READ_CLASS, ToolInfo
 from . import project
@@ -61,7 +69,7 @@ def make_handler(
                 return error_result(refused or GUARD_FAILED_TEXT)
             pin = parse_pin(args.get(PIN_ARGUMENT))
             result = runtime.run(
-                ["run", tool_id, "--cwd", agent_cwd(), *flags, *([f"--pin={pin}"] if pin else [])],
+                ["run", tool_id, "--cwd", agent_cwd(), *flags, *caller_flags(kwargs), *([f"--pin={pin}"] if pin else [])],
                 stdin=json.dumps(run_arguments(args)),
                 timeout=RUN_TIMEOUT_SECONDS,
             )

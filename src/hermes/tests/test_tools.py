@@ -2,12 +2,23 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import unittest
 from typing import Any
 from unittest import mock
 
-from support import CWD, FAKE_CLI, LISTING, FakeCliCase, approval as approval_module, project, runtime, tools
+from support import (
+    CWD,
+    FAKE_CLI,
+    LISTING,
+    FakeCliCase,
+    approval as approval_module,
+    caller as caller_module,
+    project,
+    runtime,
+    tools,
+)
 
 PIN = "ab12" * 16
 
@@ -105,7 +116,10 @@ class HandlerTest(FakeCliCase):
         [call] = self.run_calls()
         self.assertEqual(
             call["argv"],
-            ["run", "demo_thing_create", "--cwd", CWD, "--toolsets", "things", "--exclude-tools", "demo_widget_update"],
+            [
+                "run", "demo_thing_create", "--cwd", CWD, "--toolsets", "things", "--exclude-tools", "demo_widget_update",
+                "--caller=hermes",
+            ],
         )
         self.assertEqual(json.loads(call["stdin"]), {"name": "thing-1", "body": "héllo ✓"})
 
@@ -173,7 +187,7 @@ class HandlerTest(FakeCliCase):
         self.reply("run demo_thing_create", stdout='{"result":{}}')
         self.handler()({"name": "a", approval_module.PIN_ARGUMENT: PIN})
         [call] = self.run_calls()
-        self.assertEqual(call["argv"], ["run", "demo_thing_create", "--cwd", CWD, f"--pin={PIN}"])
+        self.assertEqual(call["argv"], ["run", "demo_thing_create", "--cwd", CWD, "--caller=hermes", f"--pin={PIN}"])
         self.assertEqual(json.loads(call["stdin"]), {"name": "a"})
 
     def test_an_empty_or_junk_pin_is_taken_out_and_passes_no_flag(self) -> None:
@@ -184,7 +198,7 @@ class HandlerTest(FakeCliCase):
                 self.log.unlink(missing_ok=True)
                 handler({"name": "a", approval_module.PIN_ARGUMENT: junk})
                 [call] = self.run_calls()
-                self.assertEqual(call["argv"], ["run", "demo_thing_create", "--cwd", CWD])
+                self.assertEqual(call["argv"], ["run", "demo_thing_create", "--cwd", CWD, "--caller=hermes"])
                 self.assertEqual(json.loads(call["stdin"]), {"name": "a"})
 
     def test_without_the_key_it_runs_as_before(self) -> None:
@@ -192,8 +206,55 @@ class HandlerTest(FakeCliCase):
         args = {"name": "a"}
         self.handler()(args)
         [call] = self.run_calls()
-        self.assertEqual(call["argv"], ["run", "demo_thing_create", "--cwd", CWD])
+        self.assertEqual(call["argv"], ["run", "demo_thing_create", "--cwd", CWD, "--caller=hermes"])
         self.assertEqual(args, {"name": "a"})
+
+    def caller_of_run(self, **kwargs: Any) -> str:
+        self.log.unlink(missing_ok=True)
+        self.handler()({}, **kwargs)
+        [call] = self.run_calls()
+        [caller] = [item for item in call["argv"] if item.startswith("--caller")]
+        return caller
+
+    def test_the_session_id_is_the_caller(self) -> None:
+        self.reply("run demo_thing_create", stdout='{"result":{}}')
+        self.assertEqual(self.caller_of_run(session_id="s-1", task_id="t1"), "--caller=s-1")
+
+    def test_a_missing_blank_or_non_string_session_id_is_the_fallback_caller(self) -> None:
+        self.reply("run demo_thing_create", stdout='{"result":{}}')
+        self.assertEqual(self.caller_of_run(), "--caller=hermes")
+        for session_id in ("", "   ", None, 5, ["s"]):
+            with self.subTest(session_id=session_id):
+                self.assertEqual(self.caller_of_run(session_id=session_id), "--caller=hermes")
+
+    def test_a_session_id_of_the_longest_length_is_passed_unchanged(self) -> None:
+        self.reply("run demo_thing_create", stdout='{"result":{}}')
+        session_id = "a" * caller_module.MAX_CALLER_LENGTH
+        self.assertEqual(self.caller_of_run(session_id=session_id), f"--caller={session_id}")
+
+    def test_a_longer_session_id_becomes_its_digest(self) -> None:
+        self.reply("run demo_thing_create", stdout='{"result":{}}')
+        session_id = "a" * (caller_module.MAX_CALLER_LENGTH + 1)
+        digest = hashlib.sha256(session_id.encode("utf-8")).hexdigest()
+        self.assertEqual(self.caller_of_run(session_id=session_id), f"--caller=sha256:{digest}")
+        other = "a" * caller_module.MAX_CALLER_LENGTH + "b"
+        self.assertNotEqual(self.caller_of_run(session_id=other), f"--caller=sha256:{digest}")
+
+    def test_a_session_id_the_command_line_cannot_take_becomes_its_digest(self) -> None:
+        self.reply("run demo_thing_create", stdout='{"result":{}}')
+        for session_id in ("a\x00b", "a\nb", "\ufeff"):
+            with self.subTest(session_id=session_id):
+                caller = self.caller_of_run(session_id=session_id)
+                self.assertRegex(caller, r"^--caller=sha256:[0-9a-f]{64}$")
+                self.assertNotIn("\x00", caller)
+
+    def test_a_session_id_with_inner_spaces_is_passed_unchanged(self) -> None:
+        self.reply("run demo_thing_create", stdout='{"result":{}}')
+        self.assertEqual(self.caller_of_run(session_id="a b"), "--caller=a b")
+
+    def test_a_session_id_that_looks_like_a_flag_stays_one_value(self) -> None:
+        self.reply("run demo_thing_create", stdout='{"result":{}}')
+        self.assertEqual(self.caller_of_run(session_id="--x"), "--caller=--x")
 
     def test_a_stale_error_reaches_the_model_like_other_errors(self) -> None:
         error = {"error": {"code": "stale", "message": "The call changed after it was approved."}}

@@ -30,8 +30,18 @@ class ListingTest(FakeCliCase):
         self.register({"toolsets": ["gadgets"], "read_only": True, "exclude_tools": ["demo_gadget_edit"]})
         self.assertEqual(
             [call["argv"] for call in self.calls()],
-            [["list", "--toolsets", "gadgets", "--read-only", "--exclude-tools", "demo_gadget_edit"]],
+            [
+                [
+                    "list", "--toolsets", "gadgets", "--read-only", "--exclude-tools", "demo_gadget_edit",
+                    "--caller=hermes",
+                ]
+            ],
         )
+
+    def test_list_ends_with_the_fixed_caller_flag(self) -> None:
+        self.register()
+        [argv] = [call["argv"] for call in self.calls()]
+        self.assertEqual(argv[-1], "--caller=hermes")
 
     def test_an_empty_list_registers_no_tool(self) -> None:
         self.reply("list", stdout="[]")
