@@ -1,4 +1,4 @@
-import { rolesOf, type OptionSpec, type ToolOptions } from "./core"
+import { SERVICE_ENV, rolesOf, type OptionSpec, type ToolOptions } from "./core"
 
 /** What makes this package itself; a project made from the starter sets these once (the setup script does). */
 export const PROJECT = {
@@ -21,5 +21,5 @@ export const PROJECT = {
     rolesOf(options)
   },
   /** The environment variables the tools read besides the settings, which Codex forwards to the server after them. */
-  toolVariables: [] as readonly string[],
+  toolVariables: [...SERVICE_ENV] as readonly string[],
 } as const
