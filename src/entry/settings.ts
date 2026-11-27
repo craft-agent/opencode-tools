@@ -320,6 +320,7 @@ function optionsFrom(
       if (parsed !== undefined) options[name] = parsed
     }
   }
+  profile.check?.(options)
   return options
 }
 

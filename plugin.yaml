@@ -27,6 +27,9 @@ config_schema:
   exclude_tools:
     type: list
     description: Single tools to remove by id. Wins over tools and toolsets.
+  roles:
+    type: dict
+    description: 'The roles a run can start under, by name: each an agent and a policy ("read-only" or "write"), with an optional model and note. Defaults to plan and build, OpenCode''s own agents.'
   language:
     description: The language of the approval card, such as ja. Defaults to Hermes's display language, else English.
   require_plugins:

@@ -21,6 +21,7 @@ export {
   type GrantRefusal,
 } from "./grant"
 export { isWithin } from "./paths"
+export { DEFAULT_ROLES, MAX_ROLES, parseModel, rolesOf, type Policy, type Role, type Roles } from "./role"
 export { ANY_TARGET, writeTargets } from "./targets"
 export {
   REQUIRES_USER_INTERACTION,

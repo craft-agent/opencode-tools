@@ -15,9 +15,10 @@ SKILL_PREFIX = "opencode-"
 TOOLSET_EMOJI: dict[str, str] = {}
 
 #: The settings the tools themselves read: each snake_case name and a type (``text``, ``boolean``, ``number``,
-#: ``list``, ``path`` or ``paths``) or a dict with ``type`` and optional bounds (``integer``, ``min``, ``max``),
-#: as in ``src/project.ts``. Write OPTIONS on one line with double quotes. A setting ``a_b`` becomes ``--a-b``.
-OPTIONS: dict[str, str | dict[str, object]] = {}
+#: ``list``, ``path``, ``paths`` or ``json``, a mapping forwarded as JSON text) or a dict with ``type`` and optional
+#: bounds (``integer``, ``min``, ``max``), as in ``src/project.ts``. Write OPTIONS on one line with double quotes.
+#: A setting ``a_b`` becomes ``--a-b``.
+OPTIONS: dict[str, str | dict[str, object]] = {"roles": "json"}
 
 __all__ = [
     "CLI_NAME",
