@@ -1,14 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { homedir } from "node:os"
 import { join } from "node:path"
-import {
-  forwardedVariables,
-  grantKeyVariable,
-  parseSettings,
-  parseTargetSettings,
-  parseToolSettings,
-  settingsFromOptions,
-} from "./settings"
+import { forwardedVariables, grantKeyVariable, parseSettings, parseTargetSettings, parseToolSettings } from "./settings"
 import { DEFAULT_GRANTS, failure, profile } from "./settings.testing"
 
 type Env = Record<string, string | undefined>
@@ -17,8 +10,6 @@ const KEY = "k".repeat(32)
 const parse = (argv: string[], env: Env = {}) => parseSettings(argv, env, profile).grants
 const parseTool = (argv: string[], env: Env = {}) => parseToolSettings(argv, env, profile).grants
 const parseTarget = (argv: string[], env: Env = {}) => parseTargetSettings(argv, env, profile).grants
-const fromOptions = (options: Record<string, unknown>, env: Env = {}) =>
-  settingsFromOptions(options, env, profile).grants
 
 /** Every way a package's entry points read the grant settings: the same input must give the same context. */
 const readers: [string, (flags: string[], env: Env) => ReturnType<typeof parse>][] = [
@@ -95,49 +86,6 @@ describe.each(readers)("the grant settings of %s", (_name, read) => {
     expect(message).toBe("DEMO_GRANT_KEY must be at least 32 characters.")
     expect(message).not.toContain(short)
     expect(read([], { DEMO_GRANT_KEY: "k".repeat(32) }).key).toBeDefined()
-  })
-})
-
-describe("the grant settings of a plugin's options", () => {
-  test("default as the command line does", () => {
-    expect(fromOptions({})).toEqual(DEFAULT_GRANTS)
-  })
-
-  test("read unattended and grants_dir, and an option wins over its variable", () => {
-    expect(fromOptions({ unattended: true, grants_dir: " ~/g " }, { HOME: "/home/me" })).toEqual({
-      unattended: true,
-      dir: "/home/me/g",
-      key: undefined,
-    })
-    const env = { DEMO_UNATTENDED: "true", DEMO_GRANTS_DIR: "/env/grants" }
-    expect(fromOptions({}, env)).toMatchObject({ unattended: true, dir: "/env/grants" })
-    expect(fromOptions({ unattended: false, grants_dir: "/opt/grants" }, env)).toMatchObject({
-      unattended: false,
-      dir: "/opt/grants",
-    })
-    expect(fromOptions({ unattended: false }, { DEMO_UNATTENDED: "yes" }).unattended).toBe(false)
-  })
-
-  test("count a blank directory as unset", () => {
-    expect(fromOptions({ grants_dir: " " }, { DEMO_GRANTS_DIR: "/env" }).dir).toBe(DEFAULT_GRANTS.dir)
-  })
-
-  test("refuse a wrong type or a relative directory, naming the option", () => {
-    expect(failure(() => fromOptions({ unattended: "true" })).message).toBe(
-      'Option "unattended" must be true or false.',
-    )
-    expect(failure(() => fromOptions({ grants_dir: 1 })).message).toBe('Option "grants_dir" must be an absolute path.')
-    expect(failure(() => fromOptions({ grants_dir: "rel" })).message).toBe(
-      'Option "grants_dir" must be an absolute path.',
-    )
-    expect(failure(() => fromOptions({}, { DEMO_GRANTS_DIR: "rel" })).message).toContain("DEMO_GRANTS_DIR")
-  })
-
-  test("read the key from its variable alone, and refuse a short one without quoting it", () => {
-    expect(fromOptions({}, { DEMO_GRANT_KEY: KEY }).key).toEqual(Buffer.from(KEY, "utf8"))
-    expect(failure(() => fromOptions({ grant_key: KEY })).message).toContain('"grant_key"')
-    const message = failure(() => fromOptions({}, { DEMO_GRANT_KEY: "short" })).message
-    expect(message).toBe("DEMO_GRANT_KEY must be at least 32 characters.")
   })
 })
 

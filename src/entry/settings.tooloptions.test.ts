@@ -2,14 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import type { EntryProfile } from "./profile"
-import {
-  forwardedVariables,
-  parseSettings,
-  parseTargetSettings,
-  parseToolSettings,
-  settingsFromOptions,
-  settingVariables,
-} from "./settings"
+import { forwardedVariables, parseSettings, parseTargetSettings, parseToolSettings, settingVariables } from "./settings"
 import { failure, profile } from "./settings.testing"
 
 const typedProfile: EntryProfile = {
@@ -22,10 +15,6 @@ const flags = ["--a-b", " flag ", "--enabled", "--count=3", "--labels", " a, ,b,
 const flagOptions = { a_b: "flag", enabled: true, count: 3, labels: ["a", "b"] }
 const parse = (argv: string[], variables: Record<string, string | undefined> = {}) =>
   parseSettings(argv, variables, typedProfile)
-const fromOptions = (
-  options: Record<string, unknown> | undefined,
-  variables: Record<string, string | undefined> = {},
-) => settingsFromOptions(options, variables, typedProfile)
 
 describe("command-line tool options", () => {
   test("reads all four kinds and passes them through the tool-settings parser", () => {
@@ -102,77 +91,17 @@ describe("parseTargetSettings", () => {
   )
 })
 
-describe("plugin tool options", () => {
-  test("reads all four typed values and trims text and list items", () => {
-    expect(fromOptions({ a_b: " flag ", enabled: true, count: 3, labels: [" a ", "", " ", "b"] }).options).toEqual(
-      flagOptions,
-    )
-    expect(fromOptions({ enabled: false, count: 0 }).options).toEqual({ enabled: false, count: 0 })
-  })
-
-  test("falls back to the environment, including explicitly undefined options", () => {
-    expect(fromOptions(undefined, env).options).toEqual(envOptions)
-    expect(
-      fromOptions({ a_b: undefined, enabled: undefined, count: undefined, labels: undefined }, env).options,
-    ).toEqual(envOptions)
-  })
-
-  test("options win even over invalid environment values", () => {
-    expect(fromOptions(flagOptions, env).options).toEqual(flagOptions)
-    expect(fromOptions(flagOptions, { DEMO_COUNT: "bad", DEMO_ENABLED: "bad" }).options).toEqual(flagOptions)
-  })
-
-  test("blank text and empty lists suppress environment fallback", () => {
-    for (const labels of [[], ["", " "]]) {
-      expect(fromOptions({ a_b: " ", labels }, env).options).toEqual({ enabled: false, count: 2.5 })
-    }
-    expect(fromOptions({}, { DEMO_A_B: " ", DEMO_ENABLED: "", DEMO_COUNT: " ", DEMO_LABELS: ", ," }).options).toEqual(
-      {},
-    )
-  })
-
-  test.each([
-    ["a_b", 1, "text"],
-    ["a_b", null, "text"],
-    ["enabled", "true", "true or false"],
-    ["enabled", 1, "true or false"],
-    ["count", "1", "a finite number"],
-    ["count", Number.NaN, "a finite number"],
-    ["count", Number.POSITIVE_INFINITY, "a finite number"],
-    ["count", Number.NEGATIVE_INFINITY, "a finite number"],
-    ["labels", "a,b", "a list of strings"],
-    ["labels", [1], "a list of strings"],
-    ["labels", null, "a list of strings"],
-  ])("rejects %s=%p with the expected type", (name, value, expected) => {
-    expect(failure(() => fromOptions({ [name]: value })).message).toBe(`Option "${name}" must be ${expected}.`)
-  })
-
-  test("rejects invalid fallback values, naming their variables", () => {
-    expect(failure(() => fromOptions({}, { DEMO_ENABLED: "yes" })).message).toContain("DEMO_ENABLED")
-    expect(failure(() => fromOptions({}, { DEMO_COUNT: "NaN" })).message).toContain("DEMO_COUNT")
-  })
-
-  test("lists the package's options in unknown-option errors", () => {
-    const message = failure(() => fromOptions({ nope: 1 })).message
-    expect(message).toContain('Unknown option "nope"')
-    for (const name of Object.keys(typedProfile.options!)) expect(message).toContain(name)
-  })
-})
-
 describe("path tool options", () => {
   const pathProfile: EntryProfile = { ...profile, options: { notes_dir: "path", extra_dirs: "paths" } }
   const home = "/home/demo"
   const read = (argv: string[], variables: Record<string, string | undefined> = {}) =>
     parseSettings(argv, { HOME: home, ...variables }, pathProfile).options
-  const readOption = (value: unknown, variables: Record<string, string | undefined> = {}) =>
-    settingsFromOptions({ notes_dir: value }, { HOME: home, ...variables }, pathProfile).options
 
-  test("reads an absolute path from a flag, the = form, a variable and a plugin option", () => {
+  test("reads an absolute path from a flag, the = form and a variable", () => {
     const expected = { notes_dir: "/srv/notes" }
     expect(read(["--notes-dir", " /srv/notes "])).toEqual(expected)
     expect(read(["--notes-dir=/srv/notes"])).toEqual(expected)
     expect(read([], { DEMO_NOTES_DIR: " /srv/notes " })).toEqual(expected)
-    expect(readOption(" /srv/notes ")).toEqual(expected)
     expect(read(["--notes-dir=/flag"], { DEMO_NOTES_DIR: "/env" })).toEqual({ notes_dir: "/flag" })
   })
 
@@ -186,7 +115,6 @@ describe("path tool options", () => {
   ])("expands and normalizes %s", (text, expected) => {
     expect(read([`--notes-dir=${text}`]).notes_dir).toBe(expected)
     expect(read([], { DEMO_NOTES_DIR: text }).notes_dir).toBe(expected)
-    expect(readOption(text).notes_dir).toBe(expected)
   })
 
   test("takes the home directory from an absolute HOME in the given environment, else from the system", () => {
@@ -200,30 +128,18 @@ describe("path tool options", () => {
     for (const text of ["x", "./x", "../x", "~user/x", "~x"]) {
       expect(failure(() => read([`--notes-dir=${text}`])).message).toBe("--notes-dir must be an absolute path.")
       expect(failure(() => read([], { DEMO_NOTES_DIR: text })).message).toBe("DEMO_NOTES_DIR must be an absolute path.")
-      expect(failure(() => readOption(text)).message).toBe('Option "notes_dir" must be an absolute path.')
     }
   })
 
   test("treats a blank path as unset, and a blank flag suppresses the variable", () => {
     expect(read(["--notes-dir= "], { DEMO_NOTES_DIR: "/env" })).toEqual({})
     expect(read([], { DEMO_NOTES_DIR: " " })).toEqual({})
-    expect(readOption(" ", { DEMO_NOTES_DIR: "/env" })).toEqual({})
-    expect(readOption(undefined, { DEMO_NOTES_DIR: "/env" })).toEqual({ notes_dir: "/env" })
-  })
-
-  test("rejects a plugin path that is not text", () => {
-    for (const value of [1, null, ["/a"]]) {
-      expect(failure(() => readOption(value)).message).toBe('Option "notes_dir" must be an absolute path.')
-    }
   })
 
   test("reads paths as a list, checking and normalizing each item", () => {
     const expected = { extra_dirs: ["/a/c", `${home}/x`, "/b"] }
     expect(read(["--extra-dirs", " /a/b/../c, ,~/x,/b,"])).toEqual(expected)
     expect(read([], { DEMO_EXTRA_DIRS: "/a/b/../c,~/x, ,/b" })).toEqual(expected)
-    expect(
-      settingsFromOptions({ extra_dirs: [" /a/b/../c ", "", "~/x", " ", "/b"] }, { HOME: home }, pathProfile).options,
-    ).toEqual(expected)
   })
 
   test("refuses the first relative item of paths, naming the source", () => {
@@ -231,20 +147,11 @@ describe("path tool options", () => {
     expect(failure(() => read([], { DEMO_EXTRA_DIRS: "/a,~u/b" })).message).toBe(
       "DEMO_EXTRA_DIRS must be an absolute path.",
     )
-    expect(failure(() => settingsFromOptions({ extra_dirs: ["/a", "b"] }, {}, pathProfile)).message).toBe(
-      'Option "extra_dirs" must be an absolute path.',
-    )
   })
 
-  test("treats paths with no item left as unset, and rejects a plugin value that is not a list of strings", () => {
+  test("treats paths with no item left as unset", () => {
     expect(read(["--extra-dirs=, ,"], { DEMO_EXTRA_DIRS: "/env" })).toEqual({})
     expect(read([], { DEMO_EXTRA_DIRS: " , " })).toEqual({})
-    expect(settingsFromOptions({ extra_dirs: ["", " "] }, { DEMO_EXTRA_DIRS: "/env" }, pathProfile).options).toEqual({})
-    for (const value of ["/a", [1], null]) {
-      expect(failure(() => settingsFromOptions({ extra_dirs: value }, {}, pathProfile)).message).toBe(
-        'Option "extra_dirs" must be a list of absolute paths.',
-      )
-    }
   })
 })
 
@@ -268,8 +175,6 @@ describe("bounded tool options", () => {
   }
   const read = (argv: string[], variables: Record<string, string | undefined> = {}) =>
     parseSettings(argv, variables, boundedProfile).options
-  const readOption = (name: string, value: unknown) =>
-    settingsFromOptions({ [name]: value }, {}, boundedProfile).options
 
   const flagOf = (name: string) => `--${name.replace(/_/g, "-")}`
   const variableOf = (name: string) => `DEMO_${name.toUpperCase()}`
@@ -285,7 +190,6 @@ describe("bounded tool options", () => {
     expect(failure(() => read([], { [variableOf(name)]: String(value) })).message).toBe(
       `${variableOf(name)} must be ${expected}.`,
     )
-    expect(failure(() => readOption(name, value)).message).toBe(`Option "${name}" must be ${expected}.`)
   })
 
   test("refuses a number just outside either end, and a fraction when the number must be whole", () => {
@@ -304,7 +208,6 @@ describe("bounded tool options", () => {
       floor: 2,
       ceiling: 9,
     })
-    expect(readOption("note_limit", 50)).toEqual({ note_limit: 50 })
   })
 
   test.each([
@@ -317,7 +220,6 @@ describe("bounded tool options", () => {
     expect(failure(() => read([], { [variableOf(name)]: text })).message).toBe(
       `${variableOf(name)} must list ${expected}.`,
     )
-    expect(failure(() => readOption(name, items)).message).toBe(`Option "${name}" must list ${expected}.`)
   })
 
   test("words a minimum alone", () => {
@@ -331,7 +233,6 @@ describe("bounded tool options", () => {
       few: ["a", "b", "c", "d"],
     })
     expect(read(["--labels= a, ,b,"])).toEqual({ labels: ["a", "b"] })
-    expect(readOption("labels", ["a", "", "b", " "])).toEqual({ labels: ["a", "b"] })
     expect(read(["--extra-dirs=/a,/a/../a"])).toEqual({ extra_dirs: ["/a", "/a"] })
   })
 
@@ -339,9 +240,6 @@ describe("bounded tool options", () => {
     expect(read([])).toEqual({})
     expect(read(["--labels= , ", "--few=,"], { DEMO_LABELS: "a,b,c" })).toEqual({})
     expect(read([], { DEMO_FEW: " , " })).toEqual({})
-    expect(
-      settingsFromOptions({ labels: [], few: ["", " "], extra_dirs: undefined }, {}, boundedProfile).options,
-    ).toEqual({})
   })
 
   test("reads a declaration that is only a type, and a boolean declared as an object", () => {
@@ -352,17 +250,10 @@ describe("bounded tool options", () => {
     })
     expect(failure(() => read(["--verbose=true"])).message).toBe("Option --verbose takes no value.")
     expect(read([], { DEMO_VERBOSE: "0", DEMO_PLAIN: "x" })).toEqual({ verbose: false, plain: "x" })
-    expect(readOption("verbose", true)).toEqual({ verbose: true })
-    expect(failure(() => readOption("plain", 1)).message).toBe('Option "plain" must be text.')
   })
 
   test("keeps the type errors of a bounded option", () => {
     expect(failure(() => read(["--ratio=x"])).message).toBe('Unknown number "x" in --ratio; use a finite number.')
-    expect(failure(() => readOption("ratio", "1")).message).toBe('Option "ratio" must be a finite number.')
-    expect(failure(() => readOption("labels", "a")).message).toBe('Option "labels" must be a list of strings.')
-    expect(failure(() => readOption("extra_dirs", ["rel"])).message).toBe(
-      'Option "extra_dirs" must be an absolute path.',
-    )
   })
 })
 
