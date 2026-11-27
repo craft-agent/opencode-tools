@@ -105,9 +105,9 @@ A project adds a code to `src/core/errors.ts` and to this table together.
   thrown, as a bug, not where it is rendered.
 - **Each entry point passes `details` on only when it is set**, so an error
   without it reads as it always did. The MCP server and the command line put
-  it beside the code and the message, as `error.details`. The OpenCode and
-  Hermes plugins, whose errors are text, append it to `<code>: <message>` as
-  JSON on a line of its own.
+  it beside the code and the message, as `error.details`. The Hermes plugin,
+  whose errors are text, appends it to `<code>: <message>` as JSON on a line
+  of its own.
 - The `errors` of a partial result (`StepErrors`) stay `<code>: <message>`
   strings.
 
@@ -248,8 +248,8 @@ note`). The prompt shows it wherever no headline can stand: a tool without
   that can tell such a call from its arguments and settings gives a `gate`
   (see "The core contract"). Every entry point runs it before the approval
   and again before `execute`, so a refusal is the call's result, as an
-  error, and no prompt is drawn: a native plugin asks nothing, and the
-  Hermes plugin blocks the call. Unlike `targets` and `describe`, a gate
+  error, and no prompt is drawn: the Hermes plugin asks nothing and blocks
+  the call. Unlike `targets` and `describe`, a gate
   fails closed: one that cannot tell fails the call with `internal_error`.
   Where the question itself cannot be resolved (the Hermes plugin's `target`
   fails or times out), the person is asked as before, and the run refuses
@@ -356,18 +356,20 @@ Every entry point takes the same settings:
   `min` and `max` bound a `number` or count the items of a `list` or `paths`.
   Only `type` is required. Its flag is the name with `_` as `-` (a
   `boolean` flag takes no value), its variable is `<envPrefix>_<NAME>`
-  uppercased, and its plugin option or setting is the name itself. A flag wins
-  over its variable, an option over its variable, and a blank text or path or
+  uppercased, and its setting in the Hermes plugin's configuration is the name
+  itself. A flag wins over its variable, a setting over its variable, and a
+  blank text or path or
   empty list counts as unset. A `path` is trimmed; `~` alone or followed by
   `/` (or the platform separator) stands for the home directory: `HOME` when
   it is absolute, else the account's.
   The expanded path must be absolute and reaches the tool normalized, without
   a filesystem check. A `paths` value is a list of such paths, comma-separated
-  in a flag or variable and an array of strings in a plugin option; items are
+  in a flag or variable and a list in the Hermes plugin's configuration; items
+  are
   trimmed and blank items dropped, and none left counts as unset. Bounds
   check only a value that is given, after blanks are dropped; unset stays
-  unset. Refused values are `invalid_argument`, naming the flag, variable or
-  option and what it must be. A package should not have to check a directory
+  unset. Refused values are `invalid_argument`, naming the flag or variable
+  and what it must be. A package should not have to check a directory
   or a limit again inside its tool. They reach a tool as `context.options`,
   keyed by name, and one that is not given is absent: a neutral default means
   unset, and the tool then does nothing extra. A tool reads an option when it
@@ -442,8 +444,8 @@ and every entry point checks them the same way.
   every call is logged whether the grant sets a rate or not.
 - **Grants restrict; the host still allows.** `invoke` checks the grant
   after the gate and before `execute`, so the MCP server and the command
-  line's `run` enforce it too, and the native plugins and the Hermes
-  plugin's `target` check it before they ask, refusing without a question.
+  line's `run` enforce it too, and the Hermes plugin's `target` checks it
+  before it asks, refusing without a question.
   The harness's own permission still decides whether the call reaches the
   package at all (an allow rule, an allowed-tools list, an approve mode), so
   a grant means the same in every harness and never lets a call through
@@ -473,8 +475,7 @@ and every entry point checks them the same way.
   give itself would bound nothing. `grant_create` is marked person-only: it is
   refused while `unattended` is on, no grant ever covers a person-only tool
   nor can one be created for it, and every
-  entry point keeps a standing answer from covering it: the OpenCode plugin
-  makes its permission `ask` with nothing to save, the MCP server marks it
+  entry point keeps a standing answer from covering it: the MCP server marks it
   `requiresUserInteraction` and asks through form elicitation where the
   client offers it, whatever `confirm` says, and the Hermes plugin gives each
   call a rule key of its own. A harness run with every approval skipped asks
@@ -483,7 +484,7 @@ and every entry point checks them the same way.
   is on without a grant.
 - **Grants and their use are signed with a key the host supplies.** The
   variable `<envPrefix>_GRANT_KEY` (at least 32 characters; a variable only,
-  never a flag or a plugin option, so it stays out of configuration files)
+  never a flag or a setting, so it stays out of configuration files)
   keys an HMAC-SHA256 over each grant and over a chained log of every call
   made under one: the grant, the tool, the targets, the measured values, a
   digest of the arguments, when it started and how it ended. A grant or a
@@ -584,8 +585,8 @@ and every entry point checks them the same way.
 ## Tests
 
 - Tests sit beside the code they test (`*.test.ts`) and run on `bun test`;
-  CI also starts the built MCP server, plugin and command line under Node and
-  lists their tools, so a runtime-only API cannot slip in unnoticed.
+  CI also starts the built MCP server and command line under Node and lists
+  their tools, so a runtime-only API cannot slip in unnoticed.
 - No test reaches a real service. A tool that runs a program is tested
   against a fake of that program on `PATH`.
 - A test file stays within about 300 lines, split by topic
