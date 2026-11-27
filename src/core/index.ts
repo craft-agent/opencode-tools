@@ -41,6 +41,7 @@ export {
   type CallText,
   type CallValue,
   type ConfirmRequest,
+  type JsonObject,
   type MeasuredValue,
   type OptionSpec,
   type OptionType,

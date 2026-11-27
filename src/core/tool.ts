@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { ToolError, isAbortError, isToolError } from "./errors"
+import { ToolError, isAbortError, isToolError, type JsonValue } from "./errors"
 import { finishGrantUse, grantCheck, type GrantContext } from "./grant/guard"
 import { PATTERN_CHARACTERS } from "./targets"
 
@@ -38,9 +38,9 @@ export type CallDescription = {
 
 /**
  * The kind of value a package's own setting holds: `path` is an absolute path
- * (text), `paths` a list of them.
+ * (text), `paths` a list of them, `json` a JSON object.
  */
-export type OptionType = "text" | "boolean" | "number" | "list" | "path" | "paths"
+export type OptionType = "text" | "boolean" | "number" | "list" | "path" | "paths" | "json"
 
 /**
  * How a package declares one of its own settings: its type, or an object that
@@ -55,8 +55,11 @@ export type OptionSpec =
   | { type: "list" | "paths"; min?: number; max?: number }
   | { type: OptionType }
 
+/** A JSON object: the value of a `json` setting. */
+export type JsonObject = Readonly<Record<string, JsonValue>>
+
 /** A value of one of the package's own settings. */
-export type ToolOptionValue = string | boolean | number | readonly string[]
+export type ToolOptionValue = string | boolean | number | readonly string[] | JsonObject
 
 /** The values of the package's own settings, by name; one not given is absent. */
 export type ToolOptions = Readonly<Record<string, ToolOptionValue>>

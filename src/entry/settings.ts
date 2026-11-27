@@ -3,6 +3,7 @@ import { isAbsolute, join, resolve as resolvePath, sep } from "node:path"
 import {
   ToolError,
   type GrantContext,
+  type JsonObject,
   type OptionSpec,
   type OptionType,
   type ToolOptions,
@@ -254,7 +255,7 @@ function withinBounds(
       throw numberBoundsError(bounds, source)
     }
   } else if (
-    typeof value === "object" &&
+    Array.isArray(value) &&
     ((min !== undefined && value.length < min) || (max !== undefined && value.length > max))
   ) {
     throw countBoundsError(bounds, source)
@@ -282,7 +283,23 @@ function parseTypedText(kind: OptionType, given: SettingText, env: Environment):
       return pathText(given, env)
     case "paths":
       return absolutePaths(splitList(given.text), given.source, env)
+    case "json":
+      return parseJsonObject(given)
   }
+}
+
+/** The JSON object a `json` setting holds; an object with no keys is unset. The error never quotes the text. */
+function parseJsonObject({ text, source }: SettingText): JsonObject | undefined {
+  if (nonBlank(text) === undefined) return undefined
+  const notObject = new ToolError("invalid_argument", `${source} must be a JSON object.`)
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    throw notObject
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw notObject
+  return Object.keys(parsed).length > 0 ? (parsed as JsonObject) : undefined
 }
 
 function optionsFrom(

@@ -22,7 +22,7 @@ const MCP_CONFIGS = {
   ".mcp.json": "${CLAUDE_PLUGIN_ROOT}",
 }
 
-const OPTION_TYPES = ["text", "boolean", "number", "list", "path", "paths"]
+const OPTION_TYPES = ["text", "boolean", "number", "list", "path", "paths", "json"]
 const BOUNDED_OPTION_TYPES = ["number", "list", "paths"]
 
 /** Each marketplace and the plugin entries it lists. */
