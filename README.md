@@ -232,24 +232,26 @@ A tool adds what a grant can also limit by declaring `bounds` and giving
 
 [`docs/conventions.md`](docs/conventions.md) has the rules each step follows.
 
-A package declares each option as `text`, `boolean`, `number`, `list`, `path`
-or `paths`, or as an object with `type` and optional bounds. For example, in
-`src/project.ts`:
+A package declares each option as `text`, `boolean`, `number`, `list`, `path`,
+`paths` or `json`, or as an object with `type` and optional bounds. For
+example, in `src/project.ts`:
 
 ```ts
 options: {
-  notes_dir: "path",
-  note_limit: { type: "number", integer: true, min: 1, max: 50 },
+  roles: "json",
+  wait_seconds: { type: "number", integer: true, min: 1, max: 3300 },
 }
 ```
 
 `integer: true` requires a whole number; `min` and `max` bound a number or
 count a `list` or `paths` value's items. An object with only `type` means the
-same as the type alone. Hermes's `OPTIONS` mirrors the declarations on one
-line, with double quotes and Python's `True` for `integer`:
+same as the type alone. A `json` value is a JSON object, and what it must
+hold is checked in `checkOptions` in `src/project.ts`. Hermes's `OPTIONS`
+mirrors the declarations on one line, with double quotes and Python's `True`
+for `integer`:
 
 ```python
-OPTIONS: dict[str, str | dict[str, object]] = {"notes_dir": "path", "note_limit": {"type": "number", "integer": True, "min": 1, "max": 50}}
+OPTIONS: dict[str, str | dict[str, object]] = {"roles": "json", "wait_seconds": {"type": "number", "integer": True, "min": 1, "max": 3300}}
 ```
 
 ## Reads and writes
@@ -362,12 +364,12 @@ variable, and a setting in Hermes's configuration wins over the variable too.
 | `tools`           | `--tools`          | `OPENCODE_TOOLS_TOOLS`          | single tools to add by ID, whatever their toolset                                                                                 |
 | `exclude_tools`   | `--exclude-tools`  | `OPENCODE_TOOLS_EXCLUDE_TOOLS`  | single tools to remove by ID; wins over `tools` and `toolsets`                                                                    |
 | `confirm`         | `--confirm`        | `OPENCODE_TOOLS_CONFIRM`        | MCP server only: `harness` (default) or `elicitation`, as the conventions say                                                     |
+| `caller`          | `--caller`         | `OPENCODE_TOOLS_CALLER`         | MCP server and command line: whose runs these are, at most 200 characters; unset, the MCP client's name, else `mcp`, or `cli`     |
 | `language`        | `--language`       | `OPENCODE_TOOLS_LANGUAGE`       | Hermes only: the approval prompt's language, such as `ja`                                                                         |
 | `emoji`           | —                  | —                               | Hermes only: the emoji shown beside each toolset, by toolset name (`""` for none)                                                 |
 | `require_plugins` | —                  | —                               | Hermes only: the plugins that must be loaded; while one is not, every write is refused before it is approved                      |
 | `roles`           | `--roles`          | `OPENCODE_TOOLS_ROLES`          | the roles a run can start under, as JSON; unset, `plan` (read-only) and `build` (write), OpenCode's own agents                    |
 | `rules`           | `--rules`          | `OPENCODE_TOOLS_RULES`          | permission rules of your own for a run, per policy, as JSON; unset, none                                                          |
-| `caller`          | `--caller`         | `OPENCODE_TOOLS_CALLER`         | MCP server and command line: whose runs these are; unset, the client's name, or `cli`                                             |
 | `note`            | `--note`           | `OPENCODE_TOOLS_NOTE`           | text added to what every run is told; unset, none                                                                                 |
 | `never_approve`   | `--never-approve`  | `OPENCODE_TOOLS_NEVER_APPROVE`  | the actions a request for which can only be rejected; unset, none                                                                 |
 | `read_roots`      | `--read-roots`     | `OPENCODE_TOOLS_READ_ROOTS`     | directories a run may read outside its worktree; unset, none                                                                      |
@@ -376,9 +378,9 @@ variable, and a setting in Hermes's configuration wins over the variable too.
 | `wait_seconds`    | `--wait-seconds`   | `OPENCODE_TOOLS_WAIT_SECONDS`   | how long a wait blocks before it returns; default 50, 1 to 3300                                                                   |
 
 The settings from `roles` down are the package's own, and each arrives with
-the tools that read it. `roles` and `rules` are maps: an object in a harness's
-own configuration, and JSON text in a flag or a variable. A role names an OpenCode agent and a
-policy, with an optional model and note:
+the tools that read it. `roles` and `rules` are maps: a mapping in Hermes's
+configuration, and JSON text in a flag or a variable. A role names an
+OpenCode agent and a policy, with an optional model and note:
 
 ```json
 {
@@ -386,6 +388,14 @@ policy, with an optional model and note:
   "build": { "agent": "build", "policy": "write", "model": "<provider>/<model>#<variant>" }
 }
 ```
+
+A role's name is a lowercase letter followed by up to 23 lowercase letters,
+digits or underscores, and there are at most 20 roles. A role that breaks the
+shape is refused when the settings are read, so no tool is registered until
+it is fixed.
+
+Under Hermes each session is a caller of its own: the plugin passes the
+session's id and has no `caller` setting.
 
 `OPENCODE_TOOLS_GRANT_KEY` is a variable only, never a flag or a setting. Use
 at least 32 characters, for example from `openssl rand -hex 32`,
