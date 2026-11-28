@@ -675,6 +675,14 @@ The settings, messages, README, skills and code use one vocabulary:
 - **Every request has a time limit of ten seconds and ends with the call's
   abort signal.** The client has no limit of its own. The limit covers the
   whole request, so a tool that reads a stream sets its own.
+- **A call ends within `wait_seconds` of its start**, whatever it had to do
+  first. Starting a missing service, loading a directory, each request and a
+  wait all draw on that one limit, and keep their own limits under it. A
+  harness that ends a tool call after a minute then never cuts one off, where
+  a start of the service, a load and a slow request once added up to more. A
+  call that runs out fails as `upstream_error` and says what it was waiting
+  for. The client's own search for the service, two seconds at most, is the
+  one step the limit cannot end.
 - **A failure maps to the codes above**: a missing session to `not_found`; a
   request the service calls invalid to `invalid_argument`; a refused or
   timed-out connection, a service that is starting or stopping, a status the
@@ -767,7 +775,10 @@ The settings, messages, README, skills and code use one vocabulary:
 - **An answer's prompt shows what it approves.** Its text is the whole command
   or tool call of each request, never a first line: in a compound command the
   part that needs approval is often the last.
-- **A grant can bound a start by role**, and a brief by its length.
+- **A grant can bound a start by role**, and a brief by its length in
+  characters. The role is a bound of the `prefix` kind: a role's name cannot
+  hold the separator, so the bound matches it exactly, and the contract needs
+  no kind whose values a person's configuration would have to fill.
 
 ### The caller
 
@@ -808,8 +819,11 @@ The settings, messages, README, skills and code use one vocabulary:
 
 - **The session metadata key is `opencode-tools`**, the package's name, so it
   cannot collide with another plugin's key and says whose it is. It holds `v`
-  (1), `caller`, `role`, `repository` and `branch`; a domain that binds more
-  adds its fields here first.
+  (1), `caller`, `role`, `repository` and `branch`, and `starting` while a
+  start sets the session up: the time and a token of that call. A domain that
+  binds more adds its fields here first. A session's other metadata is kept:
+  the service replaces metadata as a whole, so a tool writes back what it
+  read with its own key changed.
 - **An instruction entry the package owns is `opencode-tools.<name>`.**
   `opencode-tools.note` is the operating note, which a caller can read and
   can neither set nor remove.
@@ -832,6 +846,57 @@ The settings, messages, README, skills and code use one vocabulary:
   the four, or more than 20 roles. An entry point that started with a broken
   role would fail at the first run instead, far from the mistake.
 - **Code keys on the policy, never on a role's or an agent's name.**
+
+### A run's worktree
+
+- **A run starts in the top level of a Git worktree.** A subdirectory is
+  refused: the ruleset tells inside from outside by the session's directory,
+  and the binding names the worktree.
+- **The repository and the branch are read with git**, through the runner,
+  with git's prompts off. The repository is the common directory a checkout
+  and its linked worktrees share. The service knows a branch too, but late
+  for a directory it has just opened, and a binding made from a branch that
+  had not arrived would refuse the next turn. `ready` keeps asking the
+  service: it reports what the service sees.
+- **A detached HEAD is a worktree with no branch**, and is bound as that.
+- **A session that has left its repository or its branch is not continued.**
+  An agent can move its session with no permission asked, so both are read
+  again at every start. A read runs no git: it shows where the session is.
+
+### Starting a run
+
+- **A session holds its agent, its model and its ruleset; a prompt carries
+  none of them.** So a start sets them on the session and reads the session
+  back before any prompt: the agent, the model, the ruleset, the binding and
+  the directory. On a difference nothing is sent.
+- **A start resolves its role with the function `ready` uses, before it
+  creates a session.** The service checks an agent, a model and a variant
+  only when the turn runs, where a mistake shows as a failed turn; and a
+  `ready` that resolved otherwise would be a promise the start does not keep.
+- **A continued session is set up again.** Its agent, its ruleset and its
+  binding are sent with every start, so a role can change between turns: a
+  session that planned can go on to build, through the write tool. Its model
+  becomes the role's when the role names one and stays otherwise, since the
+  service may have moved the session to another.
+- **A start refuses a session that is running.** A prompt to one is never
+  refused by the service, and even a queued one joins the turn in flight.
+  Adding to a running turn is steering, a tool of its own.
+- **The brief is sent queued, with an id the tool makes.** The service takes
+  a prompt of the same id once.
+- **A start does not wait for its turn.** It returns once the prompt is
+  admitted, with the run's state then; waiting is a read.
+- **Two starts in one worktree are told apart by the service, with no lock
+  file.** A start marks its session's binding, then looks at the worktree's
+  sessions; where it finds another's mark it sends nothing, takes its own
+  mark back and is refused. Each looks after it has marked, so of two starts
+  at once at least one sees the other; both may be refused, never both let
+  through. A mark counts for a minute, and no longer once its session has
+  run since. A lock on disk would be a record beside the service, and would
+  not hold between two harnesses. Two continues of one session at the same
+  instant are the case this cannot always tell apart, since the second mark
+  replaces the first.
+- **A write run is not started while another session runs in its worktree**,
+  whoever it belongs to. Read-only runs may share one.
 
 ### The ruleset
 
@@ -856,6 +921,11 @@ the last match wins; a subagent's session copies its parent's ruleset.
   after the package's rules and before what every run is denied. They tighten
   a run or open another package's tools, and never reopen those denies. The
   package itself names no other package's tool and no subagent.
+- **A path is written as given and as resolved**, since the service matches
+  a path as text. A wildcard matches the whole value and `*` crosses `/`, so
+  a secret file's pattern is spelled to match one at the top level too.
+- **The package's own tools are denied under any server's name**: a tool of
+  an MCP server is named after the server, which a person chooses.
 - **Paths outside a worktree are the person's**: `read_roots` (directories a
   run may read), `output_roots` (where a run's output directory may sit) and
   `protected_dirs` (checkouts no write run may start in). A read root that
@@ -889,12 +959,35 @@ the last match wins; a subagent's session copies its parent's ruleset.
   package keeps no record of a run; a second record would disagree with the
   service.
 - **A turn ends at its own idle message**, which carries its outcome, never at
-  a session-level field or an exit status.
-- **Nothing is sent again after `unknown`.** A brief whose admission could not
-  be confirmed may have been taken.
-- **A wait returns at `wait_seconds`, with `timed_out`.** The default is 50,
-  under a harness that ends a tool call after a minute; the most is 3300. The
-  Hermes plugin's limit on a call follows the setting.
+  a session-level field or an exit status. A turn is everything since the
+  idle message before it, briefs added on the way included.
+- **A run is its session and its subagents' sessions.** A subagent is a child
+  session that runs in the background of its parent's turn, and its requests
+  are listed under its own id. So a run whose own turn has ended is still
+  `running` while a child is active, and `waiting` while one is paused.
+- **What runs is read from the service's active set, before any outcome.** A
+  session keeps its previous turn's outcome while the next one runs, and
+  stays active for a moment after its end is written.
+- **A turn that stopped without its end is `interrupted`**, and the result
+  says that OpenCode takes it up again when the service next starts. A
+  request rejected without a message leaves a turn so, and so does a service
+  that stopped.
+- **A turn that has just begun or just ended can show neither for a moment.**
+  For 30 seconds after its newest message it counts as `running`.
+- **`unknown` is a brief whose admission could not be confirmed, or a session
+  that holds no turn.** Nothing is sent again after it: the brief may have
+  been taken.
+- **A wait asks the service at intervals.** The service's own blocking route
+  has no time limit and does not return when a run pauses on a request, and
+  its event stream drops what a slow reader misses.
+- **A wait hands back a run that keeps retrying its provider**, as `running`
+  with the retry: at the third attempt, and at once on a limit or a refused
+  login, which more attempts do not cure.
+- **A wait returns when the call's time ends, with `timed_out`.**
+  `wait_seconds` is the limit of every call, counted from its start: 50 by
+  default, under a harness that ends a tool call after a minute, and 3300 at
+  most. The Hermes plugin ends a call 30 seconds after it, so the tool's own
+  answer arrives first.
 - **A result has a size limit and says when it was cut.** A list keeps a
   number of entries and a size as JSON, whichever ends first, and counts
   what there was. A name or a description is cut; an id never is, since a
@@ -927,7 +1020,8 @@ the last match wins; a subagent's session copies its parent's ruleset.
 - **Tests run against one fake service**, typed by the client's own types, so
   a reply whose shape drifted fails the type check. It is a `fetch` given to
   the client, in the test's own process, and holds what the units so far
-  read; a unit adds the routes it needs.
+  read; a unit adds the routes it needs. It records the body of each request,
+  so a test checks what a tool sent and not only where.
 - **The fake answers as the service was seen to answer**, by default: a
   directory it has not been asked about is still loading for its first
   requests, and its branch comes after the rest. A tool that reads without
