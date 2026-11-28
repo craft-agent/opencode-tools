@@ -65,6 +65,7 @@ approval, listing, plugin, project, runtime, settings, skills, tools = (
 )
 
 
+caller = importlib.import_module(f"{ROOT_NAME}.{IMPL}.caller")
 card = importlib.import_module(f"{ROOT_NAME}.{IMPL}.card")
 required = importlib.import_module(f"{ROOT_NAME}.{IMPL}.required")
 

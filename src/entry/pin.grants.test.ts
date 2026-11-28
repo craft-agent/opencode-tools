@@ -74,6 +74,7 @@ let grants: GrantContext
 
 const context = (overrides: Partial<GrantContext> = {}): ToolContext => ({
   cwd: base,
+  caller: "test",
   grants: { ...grants, ...overrides },
 })
 
@@ -208,7 +209,7 @@ describe("approvalOf while no one can be asked", () => {
 
 describe("approvalOf while someone can be asked", () => {
   test("is unchanged, with grants off or absent, and reads no grant file", async () => {
-    for (const ctx of [context({ unattended: false }), { cwd: base }]) {
+    for (const ctx of [context({ unattended: false }), { cwd: base, caller: "test" }]) {
       const { spec, calls } = fixture()
       const approval = await approvalOf(spec, ARGS, ctx)
       expect(approval).toMatchObject({ resources: ["/work/a.md"], description: { facts: [{ label: "Size" }] } })

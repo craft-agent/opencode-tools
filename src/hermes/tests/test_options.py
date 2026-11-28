@@ -8,6 +8,9 @@ from unittest import mock
 from support import CWD, FakeCliCase, project
 
 
+CALLER = "--caller=hermes"
+
+
 class ToolOptionsTest(FakeCliCase):
     def test_path_and_bounded_options_reach_list_run_and_target(self) -> None:
         self.reply("run demo_thing_create", stdout='{"result":{}}')
@@ -23,9 +26,9 @@ class ToolOptionsTest(FakeCliCase):
         ctx.hooks[0][1](tool_name="demo_thing_create", args={"target": "north"})
         options = ["--notes-dir", "~/notes", "--extra-dirs", "/notes,relative", "--note-limit", "-2.5"]
         calls = self.calls()
-        self.assertEqual(calls[0]["argv"], ["list", *options])
-        self.assertEqual(calls[1]["argv"], ["run", "demo_thing_create", "--cwd", CWD, *options])
-        self.assertEqual(calls[2]["argv"], ["target", "demo_thing_create", "--cwd", CWD, *options])
+        self.assertEqual(calls[0]["argv"], ["list", *options, CALLER])
+        self.assertEqual(calls[1]["argv"], ["run", "demo_thing_create", "--cwd", CWD, *options, CALLER])
+        self.assertEqual(calls[2]["argv"], ["target", "demo_thing_create", "--cwd", CWD, *options, CALLER])
 
     def test_options_reach_list_run_and_target(self) -> None:
         self.reply("run demo_thing_create", stdout='{"result":{}}')
@@ -36,12 +39,12 @@ class ToolOptionsTest(FakeCliCase):
         ctx.hooks[0][1](tool_name="demo_thing_create", args={"target": "north"})
         calls = self.calls()
         options = ["--note-text", "hello", "--note-count", "3"]
-        self.assertEqual(calls[0]["argv"], ["list", "--toolsets", "things", *options])
+        self.assertEqual(calls[0]["argv"], ["list", "--toolsets", "things", *options, CALLER])
         self.assertEqual(
-            calls[1]["argv"], ["run", "demo_thing_create", "--cwd", CWD, "--toolsets", "things", *options]
+            calls[1]["argv"], ["run", "demo_thing_create", "--cwd", CWD, "--toolsets", "things", *options, CALLER]
         )
         self.assertEqual(
-            calls[2]["argv"], ["target", "demo_thing_create", "--cwd", CWD, "--language=ja", *options]
+            calls[2]["argv"], ["target", "demo_thing_create", "--cwd", CWD, "--language=ja", *options, CALLER]
         )
         self.assertEqual(json.loads(calls[1]["stdin"]), {"target": "north"})
 

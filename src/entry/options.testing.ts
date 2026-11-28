@@ -7,7 +7,13 @@ import { defineTool, type ToolSpec } from "../core"
 export const NOTE_OPTION = "note_text"
 export const NOTE_ID = "demo_note_stamp"
 
-const optionValueSchema = z.union([z.string(), z.boolean(), z.number(), z.array(z.string()).readonly()])
+const optionValueSchema = z.union([
+  z.string(),
+  z.boolean(),
+  z.number(),
+  z.array(z.string()).readonly(),
+  z.record(z.string(), z.json()),
+])
 
 /** An add tool of `alpha` that returns `ctx.options` and shows the note option as a fact of its description. */
 export const noteSpec: ToolSpec = defineTool({

@@ -105,9 +105,9 @@ A project adds a code to `src/core/errors.ts` and to this table together.
   thrown, as a bug, not where it is rendered.
 - **Each entry point passes `details` on only when it is set**, so an error
   without it reads as it always did. The MCP server and the command line put
-  it beside the code and the message, as `error.details`. The OpenCode and
-  Hermes plugins, whose errors are text, append it to `<code>: <message>` as
-  JSON on a line of its own.
+  it beside the code and the message, as `error.details`. The Hermes plugin,
+  whose errors are text, appends it to `<code>: <message>` as JSON on a line
+  of its own.
 - The `errors` of a partial result (`StepErrors`) stay `<code>: <message>`
   strings.
 
@@ -248,8 +248,8 @@ note`). The prompt shows it wherever no headline can stand: a tool without
   that can tell such a call from its arguments and settings gives a `gate`
   (see "The core contract"). Every entry point runs it before the approval
   and again before `execute`, so a refusal is the call's result, as an
-  error, and no prompt is drawn: a native plugin asks nothing, and the
-  Hermes plugin blocks the call. Unlike `targets` and `describe`, a gate
+  error, and no prompt is drawn: the Hermes plugin asks nothing and blocks
+  the call. Unlike `targets` and `describe`, a gate
   fails closed: one that cannot tell fails the call with `internal_error`.
   Where the question itself cannot be resolved (the Hermes plugin's `target`
   fails or times out), the person is asked as before, and the run refuses
@@ -356,18 +356,20 @@ Every entry point takes the same settings:
   `min` and `max` bound a `number` or count the items of a `list` or `paths`.
   Only `type` is required. Its flag is the name with `_` as `-` (a
   `boolean` flag takes no value), its variable is `<envPrefix>_<NAME>`
-  uppercased, and its plugin option or setting is the name itself. A flag wins
-  over its variable, an option over its variable, and a blank text or path or
+  uppercased, and its setting in the Hermes plugin's configuration is the name
+  itself. A flag wins over its variable, a setting over its variable, and a
+  blank text or path or
   empty list counts as unset. A `path` is trimmed; `~` alone or followed by
   `/` (or the platform separator) stands for the home directory: `HOME` when
   it is absolute, else the account's.
   The expanded path must be absolute and reaches the tool normalized, without
   a filesystem check. A `paths` value is a list of such paths, comma-separated
-  in a flag or variable and an array of strings in a plugin option; items are
+  in a flag or variable and a list in the Hermes plugin's configuration; items
+  are
   trimmed and blank items dropped, and none left counts as unset. Bounds
   check only a value that is given, after blanks are dropped; unset stays
-  unset. Refused values are `invalid_argument`, naming the flag, variable or
-  option and what it must be. A package should not have to check a directory
+  unset. Refused values are `invalid_argument`, naming the flag or variable
+  and what it must be. A package should not have to check a directory
   or a limit again inside its tool. They reach a tool as `context.options`,
   keyed by name, and one that is not given is absent: a neutral default means
   unset, and the tool then does nothing extra. A tool reads an option when it
@@ -442,8 +444,8 @@ and every entry point checks them the same way.
   every call is logged whether the grant sets a rate or not.
 - **Grants restrict; the host still allows.** `invoke` checks the grant
   after the gate and before `execute`, so the MCP server and the command
-  line's `run` enforce it too, and the native plugins and the Hermes
-  plugin's `target` check it before they ask, refusing without a question.
+  line's `run` enforce it too, and the Hermes plugin's `target` checks it
+  before it asks, refusing without a question.
   The harness's own permission still decides whether the call reaches the
   package at all (an allow rule, an allowed-tools list, an approve mode), so
   a grant means the same in every harness and never lets a call through
@@ -473,8 +475,7 @@ and every entry point checks them the same way.
   give itself would bound nothing. `grant_create` is marked person-only: it is
   refused while `unattended` is on, no grant ever covers a person-only tool
   nor can one be created for it, and every
-  entry point keeps a standing answer from covering it: the OpenCode plugin
-  makes its permission `ask` with nothing to save, the MCP server marks it
+  entry point keeps a standing answer from covering it: the MCP server marks it
   `requiresUserInteraction` and asks through form elicitation where the
   client offers it, whatever `confirm` says, and the Hermes plugin gives each
   call a rule key of its own. A harness run with every approval skipped asks
@@ -483,7 +484,7 @@ and every entry point checks them the same way.
   is on without a grant.
 - **Grants and their use are signed with a key the host supplies.** The
   variable `<envPrefix>_GRANT_KEY` (at least 32 characters; a variable only,
-  never a flag or a plugin option, so it stays out of configuration files)
+  never a flag or a setting, so it stays out of configuration files)
   keys an HMAC-SHA256 over each grant and over a chained log of every call
   made under one: the grant, the tool, the targets, the measured values, a
   digest of the arguments, when it started and how it ended. A grant or a
@@ -584,8 +585,8 @@ and every entry point checks them the same way.
 ## Tests
 
 - Tests sit beside the code they test (`*.test.ts`) and run on `bun test`;
-  CI also starts the built MCP server, plugin and command line under Node and
-  lists their tools, so a runtime-only API cannot slip in unnoticed.
+  CI also starts the built MCP server and command line under Node and lists
+  their tools, so a runtime-only API cannot slip in unnoticed.
 - No test reaches a real service. A tool that runs a program is tested
   against a fake of that program on `PATH`.
 - A test file stays within about 300 lines, split by topic
@@ -640,15 +641,73 @@ The settings, messages, README, skills and code use one vocabulary:
   finding the service and authenticating to it stay OpenCode's contract
   rather than a file layout or a command's output the package would have to
   track.
+- **The client is pinned to one version and bundled into the built files.**
+  It promises no compatibility between versions, and its dependencies serve
+  entry points the package never loads, so a consumer installs nothing for
+  it. The package uses its root and its `/service` entry point only.
+- **OpenCode is what the tools drive, not a harness they are delivered to**,
+  so `src/core/` names it, in code and in messages.
+- **Every tool starts a missing service, a read included.** A check of a
+  directory's readiness that cannot ask a stopped service about its agents
+  and models answers nothing. Starting it changes nothing a person keeps, so
+  `read_only` still starts it, and a result says when the call did.
+- **The service is found with the client's `discover` and started by the
+  package itself**: `opencode serve --service` through the runner, left
+  running, then found again within 30 seconds or the call fails as
+  `upstream_error`. It is the one program the tools do not stop when its
+  call ends, unlike every program under "Programs a tool runs": a service
+  serves the calls that follow. A call that is cancelled before the start
+  starts nothing. The client's `ensure` and `stop` are never called.
+  `ensure` hands the service this process's whole environment, replaces a
+  running service of another version when given one, and ends one that
+  misses three checks; either would end a person's own sessions.
 - **A missing service is started with a minimal environment.** A service
   keeps its starter's environment for every session it later serves, a
   person's own included. So the tools give it only what finds the person's
-  programs and configuration, and never the harness's own variables.
+  programs and configuration, and never the harness's own variables: `PATH`,
+  `HOME`, `USER`, `LOGNAME`, `SHELL`, `LANG`, `LANGUAGE`, `LC_ALL`,
+  `LC_CTYPE`, `LC_MESSAGES`, `TERM`, `TMPDIR`, `TZ`, `XDG_CONFIG_HOME`,
+  `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME` and `XDG_RUNTIME_DIR`.
+  They are named one by one, in `toolVariables`, so a harness that forwards
+  only named variables forwards them. What else a service needs a person
+  adds in OpenCode's own service configuration; the package has no setting
+  for it, and one can be added without breaking anything.
+- **Every request has a time limit of ten seconds and ends with the call's
+  abort signal.** The client has no limit of its own. The limit covers the
+  whole request, so a tool that reads a stream sets its own.
+- **A failure maps to the codes above**: a missing session to `not_found`; a
+  request the service calls invalid to `invalid_argument`; a refused or
+  timed-out connection, a service that is starting or stopping, a status the
+  route does not declare, a refusal without a name (as of a route this
+  service does not have) and a reply that cannot be read to `upstream_error`.
+  No message and no result carries the service's address or its password:
+  where a message carries the service's own text, both are taken out of it.
+- **A reply is checked where it is read.** The client does not validate what
+  the service sends, so a tool checks the fields it uses, and a reply of
+  another shape is `upstream_error`. A readiness check that took a malformed
+  reply for a model would answer that a run can start.
+- **A directory is read once the service has loaded it.** The first request
+  for a directory the service has not opened answers at once with nothing in
+  it: no agents, no providers, no repository. The service loads the
+  directory in the background, and no read waits for that. So a tool that
+  reads a directory first asks for its plugins until the service lists some,
+  as OpenCode's own command line does, for up to fifteen seconds, and fails
+  as `upstream_error` after that: a readiness check that answered from an
+  empty reply would report a repository as none. The load takes a fraction
+  of a second in a running service and a few seconds in one that has just
+  started. Whether a directory is a
+  repository is read from its project, which is settled before the first
+  reply; its branch arrives later and is waited for briefly, then left out.
+- **Asking about a directory opens it in OpenCode**, as starting OpenCode
+  there would: the service keeps it as a project. A read changes nothing
+  else.
 - **OpenCode 2.4.2 is the minimum version.** Below it every tool fails as
   `upstream_error`, naming the version found and the minimum. Above it nothing
   is refused by version, and a tool whose route is missing fails alone: the
   service publishes no API version to gate on, and refusing every version not
-  yet seen would break the tools at each OpenCode release.
+  yet seen would break the tools at each OpenCode release. A development
+  build's version, written `0.0.0-…` or not as `x.y.z` at all, is not refused
+  either.
 - **Stable routes only, with one exception.** The instruction entries exist
   only as an experimental route. Where the service refuses it, the operating
   note goes at the head of the brief, and the instruction tools fail as
@@ -716,10 +775,24 @@ The settings, messages, README, skills and code use one vocabulary:
   the caller that started it, and only an entry point can say who that is.
   This adds to the context under "The core contract": `src/core/` still knows
   no harness, and compares a caller only for equality.
-- **Each entry point supplies it.** The Hermes plugin takes it from the
-  conversation a call belongs to. The MCP server takes the `caller` setting,
-  else the client's name from its initialization. The command line takes the
-  `caller` setting, else `cli`.
+- **Each entry point supplies it.** The MCP server takes the `caller` setting,
+  else the client's name from its initialization, else `mcp`, decided at the
+  first call and kept for the connection, so a caller never changes under its
+  sessions. The command line takes the `caller` setting, else `cli`. The
+  Hermes plugin passes the id of the Hermes session a call belongs to, else
+  `hermes`, and has no `caller` setting: its conversations are what it tells
+  apart. A conversation that is reset gets a new session id and no longer
+  sees its runs;
+  [#10](https://github.com/craft-agent/opencode-tools/issues/10) settles
+  whether the conversation's route replaces the id.
+- **A session id that cannot be passed as it is becomes its SHA-256.** One
+  over 200 characters, or holding a character a command line cannot carry or
+  would trim, is passed as `sha256:` and the digest: cutting it would make
+  two sessions one caller. The plugin's listing of the tools at its start
+  passes `hermes`, so no variable of another entry point can stop it.
+- **`caller` is a setting of the entry points, as `toolsets` is.** It reaches
+  a tool as the context's `caller` and never among its options, so no entry
+  point can leave it out. It is at most 200 characters, and blank is unset.
 - **A harness that cannot tell its conversations apart is one caller.** An MCP
   server over standard input serves one client and is told nothing of its
   conversations, so every conversation of that client shares its runs.
@@ -746,11 +819,18 @@ The settings, messages, README, skills and code use one vocabulary:
 - **`roles` maps a name to `agent`, `policy` and, optionally, `model` and
   `note`.** A name is `[a-z][a-z0-9_]{0,23}`; `agent` is a primary agent the
   service lists; `model` is written as OpenCode writes one,
-  `<provider>/<model>` with an optional `#<variant>`.
+  `<provider>/<model>` with an optional `#<variant>`, and read as OpenCode
+  reads it: the provider ends at the first `/`, and the variant starts after
+  the first `#` that follows.
 - **With no `roles` configured there are two**: `plan`, OpenCode's own `plan`
   agent with the `read-only` policy, and `build`, its own `build` agent with
   the `write` policy. They are the agents every OpenCode has, so the tools
   work as installed. Configured `roles` replace both.
+- **A role that breaks the shape is refused when the settings are read**, as
+  `invalid_argument` naming the role: a name outside the pattern, a missing
+  `agent` or `policy`, a `model` not written as above, a key that is none of
+  the four, or more than 20 roles. An entry point that started with a broken
+  role would fail at the first run instead, far from the mistake.
 - **Code keys on the policy, never on a role's or an agent's name.**
 
 ### The ruleset
@@ -815,15 +895,22 @@ the last match wins; a subagent's session copies its parent's ruleset.
 - **A wait returns at `wait_seconds`, with `timed_out`.** The default is 50,
   under a harness that ends a tool call after a minute; the most is 3300. The
   Hermes plugin's limit on a call follows the setting.
-- **A result has a size limit and says when it was cut.**
+- **A result has a size limit and says when it was cut.** A list keeps a
+  number of entries and a size as JSON, whichever ends first, and counts
+  what there was. A name or a description is cut; an id never is, since a
+  cut id names nothing: its entry is left out instead.
 
 ### Settings of opencode-tools
 
 - **A nested setting has the type `json`.** `roles` and `rules` are maps, and
-  a flat setting reaches no entry point as one. It is an object in a
-  harness's own configuration and JSON text in a flag or a variable, checked
-  by the package and refused as `invalid_argument` when it cannot be used.
-  This adds to the types under "Toolsets and settings".
+  a flat setting reaches no entry point as one. Its value is a JSON object: a
+  mapping in the Hermes plugin's configuration, which forwards it as JSON
+  text, and JSON text in a flag or a variable. Text that is not JSON, and
+  JSON that is not an object, are refused as `invalid_argument`, naming the
+  flag or variable; an object with no entries counts as unset, as an empty
+  list does. What the object must hold is the setting's own to check, when
+  the settings are read. This adds to the types under "Toolsets and
+  settings".
 - **Every setting but two is unset by default**: `caller`, `note`, `rules`,
   `never_approve`, `read_roots`, `output_roots` and `protected_dirs`. `roles`
   and `wait_seconds` have the defaults above.
@@ -838,6 +925,18 @@ the last match wins; a subagent's session copies its parent's ruleset.
 ### Tests of opencode-tools
 
 - **Tests run against one fake service**, typed by the client's own types, so
-  a reply whose shape drifted fails the type check.
+  a reply whose shape drifted fails the type check. It is a `fetch` given to
+  the client, in the test's own process, and holds what the units so far
+  read; a unit adds the routes it needs.
+- **The fake answers as the service was seen to answer**, by default: a
+  directory it has not been asked about is still loading for its first
+  requests, and its branch comes after the rest. A tool that reads without
+  waiting then fails its own tests, which a fake that was always ready let
+  pass.
+- **The tool context has an optional `runtime`**: the environment, the clock,
+  how the service is found, the `fetch` its requests go through and how a
+  program is left running. An entry point leaves it out and gets the real
+  ones; a test supplies its own. This adds to the context under "The core
+  contract".
 - **The clock is passed in**, so a wait is tested without waiting.
 - **No test needs a harness, a real service or a consumer's configuration.**

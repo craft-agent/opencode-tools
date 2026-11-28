@@ -25,8 +25,8 @@ consumers from the Releases page.
 3. **`npm`** checks out the tag and publishes the package with
    `npm publish --ignore-scripts`. It installs nothing, since the tag already
    carries `dist/`; it checks that npm is 11.5.1 or later, that `package.json`
-   names the tag's version, and that the tarball holds `dist/mcp.js`,
-   `dist/cli.js` and `dist/opencode.js`. It authenticates with npm trusted
+   names the tag's version, and that the tarball holds `dist/mcp.js` and
+   `dist/cli.js`. It authenticates with npm trusted
    publishing, so no token is stored, and the package carries a provenance
    statement. A version npm already publishes is skipped, so a re-run reaches
    the registry job; one npm still holds as staged is waited for, up to five

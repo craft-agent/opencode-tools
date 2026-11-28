@@ -24,7 +24,27 @@
         "OPENCODE_TOOLS_CONFIRM",
         "OPENCODE_TOOLS_UNATTENDED",
         "OPENCODE_TOOLS_GRANTS_DIR",
-        "OPENCODE_TOOLS_GRANT_KEY"
+        "OPENCODE_TOOLS_CALLER",
+        "OPENCODE_TOOLS_ROLES",
+        "OPENCODE_TOOLS_GRANT_KEY",
+        "PATH",
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "SHELL",
+        "LANG",
+        "LANGUAGE",
+        "LC_ALL",
+        "LC_CTYPE",
+        "LC_MESSAGES",
+        "TERM",
+        "TMPDIR",
+        "TZ",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "XDG_STATE_HOME",
+        "XDG_CACHE_HOME",
+        "XDG_RUNTIME_DIR"
       ]
     }
   }

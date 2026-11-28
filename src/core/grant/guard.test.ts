@@ -58,7 +58,11 @@ let base: string
 let store: GrantStoreOptions
 
 function context(overrides: Partial<GrantContext> = {}): ToolContext {
-  return { cwd: base, grants: { unattended: true, dir: store.dir, key: KEY, now: () => NOW, ...overrides } }
+  return {
+    cwd: base,
+    caller: "test",
+    grants: { unattended: true, dir: store.dir, key: KEY, now: () => NOW, ...overrides },
+  }
 }
 
 const ARGS = { path: "/work/a.md", text: "hello" }
@@ -89,7 +93,7 @@ const exists = async (path: string) => (await stat(path).catch(() => undefined))
 
 describe("invoke with grants off", () => {
   test("without ctx.grants or with unattended off, a write runs and no file is touched", async () => {
-    expect(await invoke(noteTool(), ARGS, { cwd: base })).toEqual({ ok: true })
+    expect(await invoke(noteTool(), ARGS, { cwd: base, caller: "test" })).toEqual({ ok: true })
     expect(await invoke(noteTool(), ARGS, context({ unattended: false }))).toEqual({ ok: true })
     expect(runs).toBe(2)
     expect(await exists(store.dir)).toBe(false)
@@ -289,6 +293,6 @@ describe("grantCheck", () => {
     expect(await grantCheck(reader, ARGS, context(), "record")).toBeUndefined()
     expect(await grantCheck(exemptFromGrants(noteTool()), ARGS, context(), "record")).toBeUndefined()
     expect(await grantCheck(noteTool(), ARGS, context({ unattended: false }), "record")).toBeUndefined()
-    expect(await grantCheck(noteTool(), ARGS, { cwd: base }, "record")).toBeUndefined()
+    expect(await grantCheck(noteTool(), ARGS, { cwd: base, caller: "test" }, "record")).toBeUndefined()
   })
 })

@@ -1,8 +1,8 @@
 # AGENTS
 
 opencode-tools is a set of tools for coding agents, implemented once and
-delivered to several harnesses (OpenCode, Claude Code, Codex, Grok Build,
-Antigravity, Hermes Agent) from this repository. Releases are GitHub Releases
+delivered to several harnesses (Claude Code, Codex, Grok Build, Antigravity,
+Hermes Agent) from this repository. Releases are GitHub Releases
 tagged `v<version>`; consumers pin a tag or the same npm version.
 
 ## Layout
@@ -14,9 +14,9 @@ tagged `v<version>`; consumers pin a tag or the same npm version.
   Zod v4 argument schema, an output schema, a toolset and a write class;
   `execute` gets a `ToolContext`.
 - `src/<entry>/` — one thin entry point per delivery, which turns the specs
-  into that harness's tools: `src/opencode/` (native plugin), `src/mcp/` (the
-  stdio MCP server the other plugins bundle), and `src/cli/`, the command line
-  the Hermes plugin (Python, in `src/hermes/`) calls.
+  into that harness's tools: `src/mcp/` (the stdio MCP server the plugins
+  bundle) and `src/cli/`, the command line the Hermes plugin (Python, in
+  `src/hermes/`) calls.
 - `docs/conventions.md` — the rules every tool follows, and under "The
   OpenCode tools" this package's own.
 - Tests sit beside the code they test (`*.test.ts`, `bun test`).

@@ -49,8 +49,36 @@ class ApprovalHookTest(FakeCliCase):
             },
         )
         [call] = self.target_calls()
-        self.assertEqual(call["argv"], ["target", "demo_thing_create", "--cwd", CWD])
+        self.assertEqual(call["argv"], ["target", "demo_thing_create", "--cwd", CWD, "--caller=hermes"])
         self.assertEqual(json.loads(call["stdin"]), {"target": "target/one", "body": "hi"})
+
+    def test_the_session_id_is_the_caller_of_target(self) -> None:
+        self.reply("target demo_thing_create", stdout='{"resources":["target/one"]}')
+        hook = self.hook()
+        for kwargs, caller in (
+            ({"session_id": "s-1"}, "--caller=s-1"),
+            ({}, "--caller=hermes"),
+            ({"session_id": " "}, "--caller=hermes"),
+            ({"session_id": 5}, "--caller=hermes"),
+            ({"session_id": "a" * 200}, "--caller=" + "a" * 200),
+            ({"session_id": "--x"}, "--caller=--x"),
+        ):
+            with self.subTest(kwargs=kwargs):
+                self.log.unlink(missing_ok=True)
+                hook(tool_name="demo_thing_create", args={}, **kwargs)
+                [call] = self.target_calls()
+                self.assertEqual(call["argv"], ["target", "demo_thing_create", "--cwd", CWD, caller])
+
+    def test_a_call_s_target_and_run_carry_the_same_caller(self) -> None:
+        self.reply("target demo_thing_create", stdout='{"resources":["target/one"]}')
+        self.reply("run demo_thing_create", stdout='{"result":{}}')
+        ctx = self.register()
+        ids = {"task_id": "t", "session_id": "s-7"}
+        ctx.hooks[0][1](tool_name="demo_thing_create", args={}, tool_call_id="c1", **ids)
+        ctx.tools["demo_thing_create"]["handler"]({}, **ids)
+        [target_call, run_call] = [call for call in self.calls() if call["argv"][0] in ("target", "run")]
+        self.assertIn("--caller=s-7", target_call["argv"])
+        self.assertIn("--caller=s-7", run_call["argv"])
 
     def test_every_non_read_class_is_sent_to_approval(self) -> None:
         for tool_id in ("demo_widget_update", "demo_item_add", "demo_gadget_edit", "demo_task_run"):
@@ -362,7 +390,7 @@ class ApprovalLanguageTest(FakeCliCase):
             with self.subTest(config=config, display=display):
                 self.log.unlink(missing_ok=True)
                 _, argv = self.ask(config, {"return_value": display})
-                self.assertEqual(argv, [*base, *flags])
+                self.assertEqual(argv, [*base, *flags, "--caller=hermes"])
 
     def test_the_display_language_is_read_on_every_call(self) -> None:
         self.reply("target demo_thing_create", stdout='{"resources":["target/one"]}')
@@ -371,7 +399,10 @@ class ApprovalLanguageTest(FakeCliCase):
             with mock.patch.object(approval, "display_language", return_value=display):
                 hook(tool_name="demo_thing_create", args={})
         argvs = [call["argv"] for call in self.target_calls()]
-        self.assertEqual([argv[4:] for argv in argvs], [["--harness-language=ja"], ["--harness-language=fr"]])
+        self.assertEqual(
+            [argv[4:] for argv in argvs],
+            [["--harness-language=ja", "--caller=hermes"], ["--harness-language=fr", "--caller=hermes"]],
+        )
 
     def test_a_display_language_that_fails_or_is_junk_gives_no_flag_and_the_card_is_built(self) -> None:
         for fields in (
@@ -385,7 +416,7 @@ class ApprovalLanguageTest(FakeCliCase):
             with self.subTest(fields=fields):
                 self.log.unlink(missing_ok=True)
                 decision, argv = self.ask({"language": "ja"}, fields)
-                self.assertEqual(argv, ["target", "demo_thing_create", "--cwd", CWD, "--language=ja"])
+                self.assertEqual(argv, ["target", "demo_thing_create", "--cwd", CWD, "--language=ja", "--caller=hermes"])
                 self.assertEqual(decision["message"], f"{CREATE}{DETAILS}Target: target/one")
                 self.assertEqual(decision["rule_key"], key("demo_thing_create", "target/one"))
 
@@ -403,7 +434,7 @@ class ApprovalLanguageTest(FakeCliCase):
                 decision = approval.make_hook(self.runtime, [tool], harness_language=read)(
                     tool_name="demo_thing_create", args={}
                 )
-                self.assertEqual(self.target_argv(), ["target", "demo_thing_create", "--cwd", CWD])
+                self.assertEqual(self.target_argv(), ["target", "demo_thing_create", "--cwd", CWD, "--caller=hermes"])
                 self.assertEqual(decision["message"], f"{CREATE}{DETAILS}Target: target/one")
 
     def test_list_and_run_get_no_language_flag(self) -> None:

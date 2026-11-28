@@ -3,6 +3,7 @@ import { isAbsolute, join, resolve as resolvePath, sep } from "node:path"
 import {
   ToolError,
   type GrantContext,
+  type JsonObject,
   type OptionSpec,
   type OptionType,
   type ToolOptions,
@@ -16,8 +17,8 @@ import { PROJECT_PROFILE, type EntryProfile } from "./profile"
 /** Who asks the person before an administrative tool acts: the harness, or the tool through the client's form. */
 export type ConfirmMode = "harness" | "elicitation"
 
-/** The tool settings, the values of the package's own settings (`options`, possibly empty) and the grants' context. */
-export type ToolEntrySettings = ToolSettings & { options: ToolOptions; grants: GrantContext }
+/** The tool settings, the values of the package's own settings (`options`, possibly empty), the grants' context and the caller, when one is set. */
+export type ToolEntrySettings = ToolSettings & { options: ToolOptions; grants: GrantContext; caller?: string }
 
 /** The tool settings, who confirms, the values of the package's own settings and the grants' context. */
 export type EntrySettings = ToolEntrySettings & { confirm: ConfirmMode }
@@ -30,10 +31,13 @@ const GRANT_KEY_SUFFIX = "GRANT_KEY"
 const MIN_GRANT_KEY_LENGTH = 32
 const GRANTS_DIR_NAME = "grants"
 
-type OptionName = "toolsets" | "read_only" | "tools" | "exclude_tools" | "confirm" | "unattended" | "grants_dir"
+/** The most characters a caller may have. */
+export const MAX_CALLER_LENGTH = 200
 
-const GRANT_OPTION_NAMES = ["unattended", "grants_dir"] as const satisfies readonly OptionName[]
-type GrantOptionName = (typeof GRANT_OPTION_NAMES)[number]
+type OptionName =
+  "toolsets" | "read_only" | "tools" | "exclude_tools" | "confirm" | "unattended" | "grants_dir" | "caller"
+
+const TARGET_OPTION_NAMES = ["unattended", "grants_dir", "caller"] as const satisfies readonly OptionName[]
 
 /** A setting's command-line flag and the end of its environment variable, which follows the profile's prefix; a boolean flag takes no value. */
 type Option = { flag: string; envSuffix: string; boolean?: true }
@@ -46,6 +50,7 @@ const OPTIONS: Record<OptionName, Option> = {
   confirm: { flag: "--confirm", envSuffix: "CONFIRM" },
   unattended: { flag: "--unattended", envSuffix: "UNATTENDED", boolean: true },
   grants_dir: { flag: "--grants-dir", envSuffix: "GRANTS_DIR" },
+  caller: { flag: "--caller", envSuffix: "CALLER" },
 }
 
 function profileOptions(profile: EntryProfile): NonNullable<EntryProfile["options"]> {
@@ -73,7 +78,7 @@ export function settingVariables(profile: EntryProfile = PROJECT_PROFILE): strin
   return Object.keys(settingOptions(profile)).map((name) => envName(name, profile))
 }
 
-/** The environment variable of the grant key, which is never a flag or a plugin option: `<envPrefix>_GRANT_KEY`. */
+/** The environment variable of the grant key, which is never a flag: `<envPrefix>_GRANT_KEY`. */
 export function grantKeyVariable(profile: EntryProfile = PROJECT_PROFILE): string {
   return `${profile.envPrefix}_${GRANT_KEY_SUFFIX}`
 }
@@ -190,13 +195,6 @@ function pathText(given: SettingText, env: Environment): string | undefined {
   return text === undefined ? undefined : absolutePath(text, given.source, env)
 }
 
-/** The path a plugin option names; blank is unset. */
-function pathOption(name: string, value: unknown, env: Environment): string | undefined {
-  if (typeof value !== "string") throw optionError(name, "an absolute path")
-  const text = nonBlank(value)
-  return text === undefined ? undefined : absolutePath(text, `Option "${name}"`, env)
-}
-
 function envText(
   name: string,
   env: Record<string, string | undefined>,
@@ -257,7 +255,7 @@ function withinBounds(
       throw numberBoundsError(bounds, source)
     }
   } else if (
-    typeof value === "object" &&
+    Array.isArray(value) &&
     ((min !== undefined && value.length < min) || (max !== undefined && value.length > max))
   ) {
     throw countBoundsError(bounds, source)
@@ -285,7 +283,23 @@ function parseTypedText(kind: OptionType, given: SettingText, env: Environment):
       return pathText(given, env)
     case "paths":
       return absolutePaths(splitList(given.text), given.source, env)
+    case "json":
+      return parseJsonObject(given)
   }
+}
+
+/** The JSON object a `json` setting holds; an object with no keys is unset. The error never quotes the text. */
+function parseJsonObject({ text, source }: SettingText): JsonObject | undefined {
+  if (nonBlank(text) === undefined) return undefined
+  const notObject = new ToolError("invalid_argument", `${source} must be a JSON object.`)
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    throw notObject
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw notObject
+  return Object.keys(parsed).length > 0 ? (parsed as JsonObject) : undefined
 }
 
 function optionsFrom(
@@ -306,6 +320,7 @@ function optionsFrom(
       if (parsed !== undefined) options[name] = parsed
     }
   }
+  profile.check?.(options)
   return options
 }
 
@@ -362,25 +377,45 @@ function grantsFromText(flags: Record<string, string>, env: Environment, profile
   )
 }
 
+/** A caller as given by something other than a setting, such as a client's name: trimmed, cut to MAX_CALLER_LENGTH characters, and `undefined` when blank or not text. */
+export function callerText(text: unknown): string | undefined {
+  return typeof text === "string" ? nonBlank([...text.trim()].slice(0, MAX_CALLER_LENGTH).join("")) : undefined
+}
+
+/** The caller the `caller` setting names: trimmed, blank is unset, and one over MAX_CALLER_LENGTH characters is `invalid_argument`. */
+function callerSetting(given: SettingText | undefined): string | undefined {
+  const text = nonBlank(given?.text)
+  if (given === undefined || text === undefined) return undefined
+  if ([...text].length > MAX_CALLER_LENGTH) {
+    throw new ToolError("invalid_argument", `${given.source} must be at most ${MAX_CALLER_LENGTH} characters.`)
+  }
+  return text
+}
+
 /**
- * Reads the values of the package's own settings and the grants' context from
- * the command line and environment of a command that takes no other setting
- * (`target`): any other flag is `invalid_argument`.
+ * Reads the values of the package's own settings, the grants' context and the
+ * caller from the command line and environment of a command that takes no
+ * other setting (`target`): any other flag is `invalid_argument`.
  */
 export function parseTargetSettings(
   argv: string[],
   env: Record<string, string | undefined>,
   profile: EntryProfile = PROJECT_PROFILE,
-): Pick<ToolEntrySettings, "options" | "grants"> {
+): Pick<ToolEntrySettings, "options" | "grants" | "caller"> {
   const flags = readFlags(argv, profile)
   const known = profileOptions(profile)
   const other = Object.keys(flags).find(
-    (name) => !(name in known) && !GRANT_OPTION_NAMES.some((grant) => grant === name),
+    (name) => !(name in known) && !TARGET_OPTION_NAMES.some((allowed) => allowed === name),
   )
   if (other !== undefined) {
     throw new ToolError("invalid_argument", `Unknown option "${settingOptions(profile)[other]!.flag}".`)
   }
-  return { options: optionsFrom(flags, env, profile), grants: grantsFromText(flags, env, profile) }
+  const caller = callerSetting(settingText("caller", flags, env, profile))
+  return {
+    options: optionsFrom(flags, env, profile),
+    grants: grantsFromText(flags, env, profile),
+    ...(caller !== undefined && { caller }),
+  }
 }
 
 /**
@@ -412,6 +447,8 @@ export function parseSettings(
   if (excluded) settings.exclude_tools = splitList(excluded.text)
   const confirm = value("confirm")
   if (confirm) settings.confirm = parseConfirm(confirm.text.trim(), confirm.source)
+  const caller = callerSetting(value("caller"))
+  if (caller !== undefined) settings.caller = caller
   return settings
 }
 
@@ -438,49 +475,10 @@ export function parseToolSettings(
   return settings
 }
 
-const TOOL_OPTION_NAMES = ["toolsets", "read_only", "tools", "exclude_tools"] as const satisfies readonly OptionName[]
-type ToolOptionName = (typeof TOOL_OPTION_NAMES)[number]
-
-function stringList(value: unknown): string[] | undefined {
-  return Array.isArray(value) && value.every((item): item is string => typeof item === "string") ? value : undefined
-}
-
-function optionError(name: string, expected: string): ToolError {
-  return new ToolError("invalid_argument", `Option "${name}" must be ${expected}.`)
-}
-
-function toolsetsOption(value: unknown, toolsets: Toolsets): string[] | "all" | undefined {
-  if (value === ALL_TOOLSETS) return ALL_TOOLSETS
-  const names = stringList(value)
-  if (!names) throw optionError("toolsets", `a list of toolset names or "${ALL_TOOLSETS}"`)
-  return checkToolsets(names, 'option "toolsets"', toolsets)
-}
-
-function booleanOption(name: string, value: unknown): boolean {
-  if (typeof value !== "boolean") throw optionError(name, "true or false")
-  return value
-}
-
-function listOption(name: "tools" | "exclude_tools"): (value: unknown) => string[] {
-  return (value) => {
-    const list = stringList(value)
-    if (!list) throw optionError(name, "a list of tool ids")
-    return list
-  }
-}
-
-const LANGUAGE_OPTION = "language"
-function pluginOptionNames(profile: EntryProfile): readonly string[] {
-  return [...TOOL_OPTION_NAMES, ...GRANT_OPTION_NAMES, LANGUAGE_OPTION, ...Object.keys(profileOptions(profile))]
-}
-
 /** The environment variable of the `language` setting: `<envPrefix>_LANGUAGE`. */
 export function languageVariable(profile: EntryProfile = PROJECT_PROFILE): string {
   return `${profile.envPrefix}_LANGUAGE`
 }
-
-/** The tool settings, the values of the package's own settings (`options`, possibly empty), the grants' context and the language of a native plugin's approval prompt, as given (matched later against the package's translations). */
-export type PluginSettings = ToolEntrySettings & { language?: string }
 
 function nonBlank(text: string | undefined): string | undefined {
   const trimmed = text?.trim()
@@ -495,127 +493,4 @@ export function promptLanguage(
   profile: EntryProfile = PROJECT_PROFILE,
 ): string | undefined {
   return nonBlank(flag) ?? nonBlank(env[languageVariable(profile)]) ?? nonBlank(harness)
-}
-
-function languageOption(value: unknown): string | undefined {
-  if (typeof value !== "string") throw optionError(LANGUAGE_OPTION, 'a language tag such as "ja"')
-  return nonBlank(value)
-}
-
-function toolOption(name: string, spec: OptionSpec, value: unknown, env: Environment): ToolOptionValue | undefined {
-  return withinBounds(spec, toolOptionOfType(name, optionType(spec), value, env), `Option "${name}"`)
-}
-
-function toolOptionOfType(
-  name: string,
-  kind: OptionType,
-  value: unknown,
-  env: Environment,
-): ToolOptionValue | undefined {
-  switch (kind) {
-    case "text":
-      if (typeof value !== "string") throw optionError(name, "text")
-      return nonBlank(value)
-    case "boolean":
-      if (typeof value !== "boolean") throw optionError(name, "true or false")
-      return value
-    case "number":
-      if (typeof value !== "number" || !Number.isFinite(value)) throw optionError(name, "a finite number")
-      return value
-    case "list": {
-      const list = stringList(value)
-      if (!list) throw optionError(name, "a list of strings")
-      const items = list.map((item) => item.trim()).filter((item) => item !== "")
-      return items.length > 0 ? items : undefined
-    }
-    case "path":
-      return pathOption(name, value, env)
-    case "paths": {
-      const list = stringList(value)
-      if (!list) throw optionError(name, "a list of absolute paths")
-      return absolutePaths(
-        list.flatMap((item) => nonBlank(item) ?? []),
-        `Option "${name}"`,
-        env,
-      )
-    }
-  }
-}
-
-/**
- * Reads the tool settings and the prompt language from the options a plugin
- * is configured with, for entry points that have no command line. An option
- * wins over its environment variable (`language` falls back to
- * `<envPrefix>_LANGUAGE`, blank meaning unset, and is not checked against any
- * list); an option of the wrong type, or one this function does not know, is
- * `invalid_argument` naming it. `confirm` is not an option here: the harness
- * asks. `unattended` and `grants_dir` are, and the grant key is read from its
- * variable alone.
- */
-export function settingsFromOptions(
-  options: Record<string, unknown> | undefined,
-  env: Record<string, string | undefined>,
-  profile: EntryProfile = PROJECT_PROFILE,
-): PluginSettings {
-  const given = options ?? {}
-  const names = pluginOptionNames(profile)
-  const unknown = Object.keys(given).find((name) => !names.includes(name))
-  if (unknown !== undefined) {
-    throw new ToolError("invalid_argument", `Unknown option "${unknown}"; use one of ${names.join(", ")}.`)
-  }
-
-  const resolve = <T>(
-    name: ToolOptionName | GrantOptionName,
-    fromOption: (value: unknown) => T,
-    fromText: (text: SettingText) => T,
-  ): T | undefined => {
-    if (given[name] !== undefined) return fromOption(given[name])
-    const text = envText(name, env, profile)
-    return text !== undefined ? fromText(text) : undefined
-  }
-
-  const parsedOptions: Record<string, ToolOptionValue> = {}
-  for (const [name, spec] of Object.entries(profileOptions(profile))) {
-    let parsed: ToolOptionValue | undefined
-    if (given[name] !== undefined) {
-      parsed = toolOption(name, spec, given[name], env)
-    } else {
-      const fromEnv = envText(name, env, profile)
-      if (fromEnv !== undefined) parsed = parseOptionText(spec, fromEnv, env)
-    }
-    if (parsed !== undefined) parsedOptions[name] = parsed
-  }
-  const unattended = resolve(
-    "unattended",
-    (value) => booleanOption("unattended", value),
-    ({ text, source }) => parseBoolean(text, source),
-  )
-  const grantsDir = resolve(
-    "grants_dir",
-    (value) => pathOption("grants_dir", value, env),
-    (text) => pathText(text, env),
-  )
-  const settings: PluginSettings = { options: parsedOptions, grants: grantContext(unattended, grantsDir, env, profile) }
-  const toolsets = resolve(
-    "toolsets",
-    (value) => toolsetsOption(value, profile.toolsets),
-    ({ text, source }) => checkToolsets(splitList(text), source, profile.toolsets),
-  )
-  if (toolsets !== undefined) settings.toolsets = toolsets
-  const readOnly = resolve(
-    "read_only",
-    (value) => booleanOption("read_only", value),
-    ({ text, source }) => parseBoolean(text, source),
-  )
-  if (readOnly !== undefined) settings.read_only = readOnly
-  const tools = resolve("tools", listOption("tools"), ({ text }) => splitList(text))
-  if (tools !== undefined) settings.tools = tools
-  const excluded = resolve("exclude_tools", listOption("exclude_tools"), ({ text }) => splitList(text))
-  if (excluded !== undefined) settings.exclude_tools = excluded
-  const language =
-    given[LANGUAGE_OPTION] !== undefined
-      ? languageOption(given[LANGUAGE_OPTION])
-      : promptLanguage(undefined, env, undefined, profile)
-  if (language !== undefined) settings.language = language
-  return settings
 }

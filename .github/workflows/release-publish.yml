@@ -112,7 +112,7 @@ jobs:
       # while the job can request an OIDC token.
       - name: Check the tarball
         run: |
-          built=(dist/mcp.js dist/cli.js dist/opencode.js)
+          built=(dist/mcp.js dist/cli.js)
           for file in "${built[@]}"; do
             if [[ ! -f "$file" ]]; then
               echo "::error::$file is missing from the tagged commit."

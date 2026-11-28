@@ -1,45 +1,11 @@
 import { describe, expect, test } from "bun:test"
-import {
-  languageVariable,
-  parseSettings,
-  parseToolSettings,
-  promptLanguage,
-  settingsFromOptions,
-  settingVariables,
-} from "./settings"
+import { languageVariable, parseSettings, parseToolSettings, promptLanguage, settingVariables } from "./settings"
 import { DEFAULT_GRANTS, failure, profile } from "./settings.testing"
-
-const fromOptions = (options: Record<string, unknown> | undefined, env: Record<string, string | undefined> = {}) =>
-  settingsFromOptions(options, env, profile)
 
 describe("languageVariable", () => {
   test("is the profile's prefix and LANGUAGE, and no setting variable", () => {
     expect(languageVariable(profile)).toBe("DEMO_LANGUAGE")
     expect(settingVariables(profile)).not.toContain("DEMO_LANGUAGE")
-  })
-})
-
-describe("settingsFromOptions language", () => {
-  test("reads the option trimmed, and treats blank as unset", () => {
-    expect(fromOptions({ language: "ja" })).toEqual({ language: "ja", options: {}, grants: DEFAULT_GRANTS })
-    expect(fromOptions({ language: " ja-JP " }).language).toBe("ja-JP")
-    expect(fromOptions({ language: "  " })).toEqual({ options: {}, grants: DEFAULT_GRANTS })
-    expect(fromOptions({ language: "xx-unknown" }).language).toBe("xx-unknown")
-  })
-
-  test("rejects a value that is not a string", () => {
-    const message = failure(() => fromOptions({ language: 1 })).message
-    expect(message).toBe('Option "language" must be a language tag such as "ja".')
-  })
-
-  test("falls back to the environment, and an option wins over it", () => {
-    expect(fromOptions({}, { DEMO_LANGUAGE: " fr " }).language).toBe("fr")
-    expect(fromOptions({}, { DEMO_LANGUAGE: " " })).toEqual({ options: {}, grants: DEFAULT_GRANTS })
-    expect(fromOptions({ language: "ja" }, { DEMO_LANGUAGE: "fr" }).language).toBe("ja")
-  })
-
-  test("the unknown-option message lists language", () => {
-    expect(failure(() => fromOptions({ bogus: 1 })).message).toContain("language")
   })
 })
 

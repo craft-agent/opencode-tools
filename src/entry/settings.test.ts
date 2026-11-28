@@ -18,6 +18,7 @@ describe("settingVariables", () => {
       "DEMO_CONFIRM",
       "DEMO_UNATTENDED",
       "DEMO_GRANTS_DIR",
+      "DEMO_CALLER",
       "DEMO_NOTE_TEXT",
     ])
   })

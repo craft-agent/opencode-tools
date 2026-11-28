@@ -28,6 +28,12 @@ export type ExecResult = {
   timedOut?: true
 }
 
+export type StartOptions = {
+  cwd?: string
+  /** The child's whole environment; nothing is merged in from this process. */
+  env: Record<string, string>
+}
+
 /** The `AbortError` that stands for an aborted signal, whatever reason the signal carries. */
 export function abortError(signal: AbortSignal): Error {
   const reason: unknown = signal.reason
@@ -137,6 +143,39 @@ export function exec(argv: string[], options: ExecOptions): Promise<ExecResult> 
     child.on("close", (code, killedBy) => {
       exitedWith ??= { code, killedBy }
       finish()
+    })
+  })
+}
+
+/**
+ * Starts a program without a shell and leaves it running: detached, with no
+ * pipe to this process, so it outlives the call and this process. Resolves
+ * once the program has started; a program that cannot be started rejects
+ * with the spawn error, whose `code` is `"ENOENT"` when it is not on the
+ * `PATH` of `options.env`.
+ */
+export function startDetached(argv: string[], options: StartOptions): Promise<{ pid: number | undefined }> {
+  return new Promise((resolve, reject) => {
+    const [program, ...args] = argv
+    if (!program) {
+      reject(new Error("startDetached needs a program to run"))
+      return
+    }
+
+    const child = spawn(program, args, {
+      cwd: options.cwd,
+      env: options.env,
+      shell: false,
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    })
+    child.once("error", reject)
+    // Stays for the child's lifetime: an error after the start, such as a failed kill, must not become an unhandled event that crashes this process.
+    child.on("error", () => {})
+    child.once("spawn", () => {
+      child.unref()
+      resolve({ pid: child.pid })
     })
   })
 }

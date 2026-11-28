@@ -4,8 +4,6 @@ OpenCode tools for coding agents: start, follow, steer and answer sessions from 
 
 | Harness        | Delivery                                       | Pinned by                      |
 | -------------- | ---------------------------------------------- | ------------------------------ |
-| OpenCode V2    | native plugin (npm package, with skills)       | the version in the package     |
-| OpenCode V1    | native plugin (npm package, no skills)         | the version in the package     |
 | Claude Code    | plugin: MCP server and skills                  | the release tag, as the ref    |
 | Codex          | plugin: MCP server and skills                  | the release tag, as the ref    |
 | Grok Build     | plugin: MCP server and skills                  | the release tag, as `@ref`     |
@@ -30,40 +28,8 @@ commit its tag names:
 gh api repos/craft-agent/opencode-tools/commits/v<version> --jq .sha
 ```
 
-### OpenCode
-
-OpenCode V2 takes the package and its options in `opencode.json`:
-
-```json
-{
-  "plugins": [{ "package": "@craftsamo/opencode-tools@<version>", "options": { "read_only": false } }],
-  "permissions": [{ "action": "opencode_*", "resource": "*", "effect": "ask" }]
-}
-```
-
-OpenCode V1 takes the package as a string, or as a pair with its options:
-
-```json
-{
-  "plugin": [["@craftsamo/opencode-tools@<version>", { "read_only": false }]],
-  "permission": { "opencode_*": "ask" }
-}
-```
-
-OpenCode allows any action no rule names, so the plugin's request is granted
-silently unless a rule says `ask`. Read tools never ask, so the `opencode_*` glob
-is safe.
-
-V1 registers no skills. Unpack the package and copy its `skills/*` folders into
-`~/.config/opencode/skills/`:
-
-```sh
-npm pack @craftsamo/opencode-tools@<version>
-tar -xzf craftsamo-opencode-tools-<version>.tgz
-mkdir -p ~/.config/opencode/skills
-cp -r package/skills/* ~/.config/opencode/skills/
-rm -rf package craftsamo-opencode-tools-<version>.tgz
-```
+The package is not installed into OpenCode itself: the tools drive OpenCode
+from another harness, and a session they start cannot call them.
 
 ### Claude Code
 
@@ -156,22 +122,47 @@ Add the server to the host's MCP configuration. Flags go in `args`:
 }
 ```
 
+## The OpenCode service
+
+The tools reach the OpenCode service a person already runs, through
+OpenCode's own client. When no service is running, a call starts one
+(`opencode serve --service`) and leaves it running. A read does too, also
+under `read_only`, and its result says so. The call waits up to 30 seconds
+for the service to come up.
+
+A service keeps the environment it was started with for every session it
+later serves, a person's own included. So one the tools start is given only
+what finds a person's programs and configuration: `PATH`, `HOME`, `USER`,
+`LOGNAME`, `SHELL`, the locale (`LANG`, `LANGUAGE`, `LC_ALL`, `LC_CTYPE`,
+`LC_MESSAGES`), `TERM`, `TMPDIR`, `TZ`, and `XDG_CONFIG_HOME`,
+`XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME` and `XDG_RUNTIME_DIR`.
+Nothing else of the harness's environment goes with it.
+
+A provider key that lives only in a shell variable therefore does not reach
+a service the tools start. Keep it in OpenCode's own service configuration,
+or start the service yourself before the tools need it: a running service
+is used as it is, and never restarted or stopped.
+
+Asking about a directory opens it in OpenCode, as starting OpenCode there
+would: the service keeps it as a project and loads its configuration, which
+takes a moment the first time, and a few seconds in a service that has just
+started. The tools wait for that, for up to fifteen seconds.
+
 ## Tools and skills
 
 Each toolset comes with a skill that tells an agent how to use its tools. A
 skill names its toolset under `metadata` in its frontmatter
-(`metadata: { toolset: <name> }`, written as a block). OpenCode V2 and Hermes
-register it only when the settings register at least one of that toolset's
-tools, so a profile with the toolset off, or with all its tools removed, does
-not see it; a skill without a toolset is always registered. Claude Code,
-Codex, Grok Build and Antigravity install the skill folder whole and pass the
-settings only to the MCP server, so they list every skill whatever the
-settings select. OpenCode V1 registers no skills, and its copied skills are
-all listed too.
+(`metadata: { toolset: <name> }`, written as a block). Hermes registers it
+only when the settings register at least one of that toolset's tools, so a
+profile with the toolset off, or with all its tools removed, does not see it;
+a skill without a toolset is always registered. Claude Code, Codex, Grok Build
+and Antigravity install the skill folder whole and pass the settings only to
+the MCP server, so they list every skill whatever the settings select.
 
 There is one toolset per domain; `service`, `run` and `request` are on by
-default, and `instruction`, `worktree` and `history` are opt-in. A tool that
-no release carries yet is not registered.
+default, and `instruction`, `worktree` and `history` are opt-in. A toolset
+arrives with its first tool: one that no release carries yet is not a name
+`toolsets` takes, and a tool that no release carries is not registered.
 
 | Toolset       | Covers                                                              |
 | ------------- | ------------------------------------------------------------------- |
@@ -192,6 +183,23 @@ from a run is data, never instructions.
 | Tool                    | Class | Does                                                                                   |
 | ----------------------- | ----- | -------------------------------------------------------------------------------------- |
 | `opencode_service_read` | read  | the service and its version, its agents, models and roles, and a directory's readiness |
+
+Its `method` says what to read:
+
+| Method      | Reads                                                                                                    |
+| ----------- | -------------------------------------------------------------------------------------------------------- |
+| `status`    | the service's version and the roles as they are configured, each with its agent, policy and model        |
+| `agents`    | the agents of a directory, subagents and hidden ones included                                            |
+| `providers` | the providers the service can use in a directory, and how many models each has                           |
+| `models`    | the models of one provider with their variants, narrowed by `match`                                      |
+| `ready`     | whether a directory is in a Git repository, a role's agent is a primary agent there and a model resolves |
+
+A list holds at most 100 entries, keeps to a size and says when it left some
+out. `ready` answers one line when nothing is wrong, and the findings
+otherwise; an agent that is a subagent, or one OpenCode hides for its own
+use, is a finding. No result holds the service's address, its password or a
+value from OpenCode's configuration files; the roles are the tools' own
+setting.
 
 ### `run`
 
@@ -268,24 +276,26 @@ A tool adds what a grant can also limit by declaring `bounds` and giving
 
 [`docs/conventions.md`](docs/conventions.md) has the rules each step follows.
 
-A package declares each option as `text`, `boolean`, `number`, `list`, `path`
-or `paths`, or as an object with `type` and optional bounds. For example, in
-`src/project.ts`:
+A package declares each option as `text`, `boolean`, `number`, `list`, `path`,
+`paths` or `json`, or as an object with `type` and optional bounds. For
+example, in `src/project.ts`:
 
 ```ts
 options: {
-  notes_dir: "path",
-  note_limit: { type: "number", integer: true, min: 1, max: 50 },
+  roles: "json",
+  wait_seconds: { type: "number", integer: true, min: 1, max: 3300 },
 }
 ```
 
 `integer: true` requires a whole number; `min` and `max` bound a number or
 count a `list` or `paths` value's items. An object with only `type` means the
-same as the type alone. Hermes's `OPTIONS` mirrors the declarations on one
-line, with double quotes and Python's `True` for `integer`:
+same as the type alone. A `json` value is a JSON object, and what it must
+hold is checked in `checkOptions` in `src/project.ts`. Hermes's `OPTIONS`
+mirrors the declarations on one line, with double quotes and Python's `True`
+for `integer`:
 
 ```python
-OPTIONS: dict[str, str | dict[str, object]] = {"notes_dir": "path", "note_limit": {"type": "number", "integer": True, "min": 1, "max": 50}}
+OPTIONS: dict[str, str | dict[str, object]] = {"roles": "json", "wait_seconds": {"type": "number", "integer": True, "min": 1, "max": 3300}}
 ```
 
 ## Reads and writes
@@ -295,7 +305,6 @@ writes are confirmed by the harness.
 
 | Harness     | Reads without asking                                                                                             |
 | ----------- | ---------------------------------------------------------------------------------------------------------------- |
-| OpenCode    | always; the plugin asks only before a write                                                                      |
 | Claude Code | the rule `mcp__plugin_opencode-tools_opencode-tools__*_read` in `permissions.allow` of `~/.claude/settings.json` |
 | Codex       | always; Codex runs tools that declare `readOnlyHint` unasked, as the read tools do                               |
 | Grok Build  | `grok --allow 'MCPTool(opencode-tools__*_read)' --allow 'MCPTool(opencode_*_read)'` (both rules; see below)      |
@@ -304,8 +313,6 @@ writes are confirmed by the harness.
 
 Where a write is asked about, and where it is not:
 
-- **OpenCode** grants any action no rule names, so a write runs unasked unless
-  a rule asks for it: add the `opencode_*` rule shown under [OpenCode](#opencode).
 - **Codex** asks before every write because of the plugin's approval mode.
   Under `codex exec` it refuses with "MCP tool call requires approval, but
   approval policy is never". For bounded jobs, see
@@ -324,9 +331,9 @@ Where a write is asked about, and where it is not:
   and `--yolo` skip approval, so writes then run unasked. For bounded jobs, see
   [Writes no one is there to approve](#writes-no-one-is-there-to-approve).
 
-A call a tool's `gate` refuses never runs, whatever the answer. OpenCode and
-Hermes refuse it before they ask, so no prompt shows it; Hermes blocks it with
-the tool's error. Claude Code, Codex, Grok Build and Antigravity draw their
+A call a tool's `gate` refuses never runs, whatever the answer. Hermes
+refuses it before it asks, so no prompt shows it, and blocks it with the
+tool's error. Claude Code, Codex, Grok Build and Antigravity draw their
 own prompt before the MCP server sees the call, so they may still ask about
 it; the server then refuses it.
 
@@ -355,9 +362,6 @@ contract.
 
 What lets a write reach the package when no one can answer:
 
-- **OpenCode** `opencode run` rejects every question unless an allow rule
-  names the tool (`"permission": { "opencode_note_create": "allow" }`) or the
-  run starts with `--auto`.
 - **Claude Code** `claude -p` needs the tool in `--allowedTools`, as
   `mcp__plugin_opencode-tools_opencode-tools__opencode_note_create`.
 - **Codex** `codex exec` needs `approval_mode = "approve"` for that tool under
@@ -378,24 +382,22 @@ What lets a write reach the package when no one can answer:
 ### Limits
 
 - A run with every approval skipped (Hermes `-z` or `--yolo`, an
-  always-approve mode, an explicit `allow` for `opencode_grant_create`, or a
-  global OpenCode V1 `allow`) shows no prompt. A grant created there is not a
+  always-approve mode, or an explicit `allow` for `opencode_grant_create`)
+  shows no prompt. A grant created there is not a
   person's answer, and it can be as wide as any target, no bound and no rate
   for 90 days: create grants only where the harness asks.
 - An earlier copy of the grants directory put back whole is not detected.
   Expiry, at most 90 days, bounds what it can restore.
 - Anyone who can read the key can sign grants. Keep it where the agent's
   tools cannot read it.
-- The OpenCode V2 plugin forces a question for `opencode_grant_create`
-  through a hook; only hosts that offer that hook run it.
 
-The OpenCode V2 service and Hermes gateway keep the environment they started
-with; see [Settings](#settings) before changing the job's variables.
+A Hermes gateway keeps the environment it started with; see
+[Settings](#settings) before changing the job's variables.
 
 ## Settings
 
 Every entry point takes the same settings. A flag wins over its environment
-variable, and an option or setting wins over the variable too.
+variable, and a setting in Hermes's configuration wins over the variable too.
 
 | Setting           | Flag               | Variable                        | Meaning                                                                                                                           |
 | ----------------- | ------------------ | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
@@ -406,12 +408,12 @@ variable, and an option or setting wins over the variable too.
 | `tools`           | `--tools`          | `OPENCODE_TOOLS_TOOLS`          | single tools to add by ID, whatever their toolset                                                                                 |
 | `exclude_tools`   | `--exclude-tools`  | `OPENCODE_TOOLS_EXCLUDE_TOOLS`  | single tools to remove by ID; wins over `tools` and `toolsets`                                                                    |
 | `confirm`         | `--confirm`        | `OPENCODE_TOOLS_CONFIRM`        | MCP server only: `harness` (default) or `elicitation`, as the conventions say                                                     |
-| `language`        | `--language`       | `OPENCODE_TOOLS_LANGUAGE`       | native plugins only: the approval prompt's language, such as `ja`                                                                 |
+| `caller`          | `--caller`         | `OPENCODE_TOOLS_CALLER`         | MCP server and command line: whose runs these are, at most 200 characters; unset, the MCP client's name, else `mcp`, or `cli`     |
+| `language`        | `--language`       | `OPENCODE_TOOLS_LANGUAGE`       | Hermes only: the approval prompt's language, such as `ja`                                                                         |
 | `emoji`           | —                  | —                               | Hermes only: the emoji shown beside each toolset, by toolset name (`""` for none)                                                 |
 | `require_plugins` | —                  | —                               | Hermes only: the plugins that must be loaded; while one is not, every write is refused before it is approved                      |
 | `roles`           | `--roles`          | `OPENCODE_TOOLS_ROLES`          | the roles a run can start under, as JSON; unset, `plan` (read-only) and `build` (write), OpenCode's own agents                    |
 | `rules`           | `--rules`          | `OPENCODE_TOOLS_RULES`          | permission rules of your own for a run, per policy, as JSON; unset, none                                                          |
-| `caller`          | `--caller`         | `OPENCODE_TOOLS_CALLER`         | MCP server and command line: whose runs these are; unset, the client's name, or `cli`                                             |
 | `note`            | `--note`           | `OPENCODE_TOOLS_NOTE`           | text added to what every run is told; unset, none                                                                                 |
 | `never_approve`   | `--never-approve`  | `OPENCODE_TOOLS_NEVER_APPROVE`  | the actions a request for which can only be rejected; unset, none                                                                 |
 | `read_roots`      | `--read-roots`     | `OPENCODE_TOOLS_READ_ROOTS`     | directories a run may read outside its worktree; unset, none                                                                      |
@@ -420,9 +422,9 @@ variable, and an option or setting wins over the variable too.
 | `wait_seconds`    | `--wait-seconds`   | `OPENCODE_TOOLS_WAIT_SECONDS`   | how long a wait blocks before it returns; default 50, 1 to 3300                                                                   |
 
 The settings from `roles` down are the package's own, and each arrives with
-the tools that read it. `roles` and `rules` are maps: an object in a harness's
-own configuration, and JSON text in a flag or a variable. A role names an OpenCode agent and a
-policy, with an optional model and note:
+the tools that read it. `roles` and `rules` are maps: a mapping in Hermes's
+configuration, and JSON text in a flag or a variable. A role names an
+OpenCode agent and a policy, with an optional model and note:
 
 ```json
 {
@@ -431,8 +433,16 @@ policy, with an optional model and note:
 }
 ```
 
-`OPENCODE_TOOLS_GRANT_KEY` is a variable only, never a flag or a plugin
-option. Use at least 32 characters, for example from `openssl rand -hex 32`,
+A role's name is a lowercase letter followed by up to 23 lowercase letters,
+digits or underscores, and there are at most 20 roles. A role that breaks the
+shape is refused when the settings are read, so no tool is registered until
+it is fixed.
+
+Under Hermes each session is a caller of its own: the plugin passes the
+session's id and has no `caller` setting.
+
+`OPENCODE_TOOLS_GRANT_KEY` is a variable only, never a flag or a setting. Use
+at least 32 characters, for example from `openssl rand -hex 32`,
 stored where the host keeps secrets. Without it no write runs while
 unattended and no grant can be created. Codex forwards it alongside the
 settings' variables, as described below.
@@ -443,19 +453,13 @@ same way. A `path` is trimmed; `~` and `~/…` (also with the platform separator
 stand for the home directory (`HOME` when it is absolute, else the account's).
 It must then be absolute and reaches the tool normalized,
 without a filesystem check. `paths` is a list of such paths, comma-separated
-in a flag or variable and an array of strings in a plugin option. Blank paths
+in a flag or variable and a list in Hermes's configuration. Blank paths
 and lists with no items after trimming and dropping blanks count as unset.
 Bounds check only a given value, not an unset option. Refused values are
-`invalid_argument`, naming the flag, variable or option and what it must be.
+`invalid_argument`, naming the flag or variable and what it must be.
 Hermes passes paths and lists to the command line, which checks the paths and
 bounds. Where each harness reads them:
 
-- **OpenCode** takes the plugin `options` shown above, with lists as arrays and
-  `read_only` as a boolean, and falls back to the variables. V2 runs plugins in
-  its background service, which keeps the environment it started with: a
-  variable set where `opencode run` starts has no effect until the service is
-  restarted in that environment (`opencode service restart`). V1 runs plugins
-  in its own process.
 - **Hermes** takes `plugins.entries.opencode-tools.settings` in
   `config.yaml`:
 
@@ -503,16 +507,15 @@ bounds. Where each harness reads them:
   the project's names.
 - `src/tools.ts` — the list of every tool, which each entry point registers.
 - `src/words.ts` — the translations of the tools' words, per language, which
-  the native plugins use in their approval prompts.
+  the Hermes plugin uses in its approval prompts.
 - `src/mcp/` — the MCP server, built to `dist/mcp.js` and run by
   `opencode-tools`.
-- `src/opencode/` — the OpenCode plugin, built to `dist/opencode.js`.
 - `src/cli/` — the command line the Hermes plugin calls, built to `dist/cli.js`
   and run by `opencode-tools-cli`.
 - `src/hermes/`, `plugin.yaml` and `__init__.py` — the Hermes plugin.
 - `skills/` — one skill per toolset, `skills/<name>/SKILL.md`, which every
-  harness that takes skills loads from the package or plugin root; the native
-  plugins load only those of the toolsets that are on.
+  harness that takes skills loads from the package or plugin root; the Hermes
+  plugin loads only those of the toolsets that are on.
 - `.claude-plugin/`, `.codex-plugin/`, `.agents/plugins/`, `.mcp.json`,
   `.antigravity-plugin/` and `mcp_config.json` — the plugin manifests of the
   other harnesses. Codex reads `.codex-plugin/plugin.json`; a root

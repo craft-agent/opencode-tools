@@ -1,6 +1,7 @@
 import { z } from "zod"
-import { ToolError, isAbortError, isToolError } from "./errors"
+import { ToolError, isAbortError, isToolError, type JsonValue } from "./errors"
 import { finishGrantUse, grantCheck, type GrantContext } from "./grant/guard"
+import type { ToolRuntime } from "./runtime"
 import { PATTERN_CHARACTERS } from "./targets"
 
 /** The toolsets of a package: every name, in the order `all` lists them, and the ones on when a setting names none. */
@@ -38,9 +39,9 @@ export type CallDescription = {
 
 /**
  * The kind of value a package's own setting holds: `path` is an absolute path
- * (text), `paths` a list of them.
+ * (text), `paths` a list of them, `json` a JSON object.
  */
-export type OptionType = "text" | "boolean" | "number" | "list" | "path" | "paths"
+export type OptionType = "text" | "boolean" | "number" | "list" | "path" | "paths" | "json"
 
 /**
  * How a package declares one of its own settings: its type, or an object that
@@ -55,8 +56,11 @@ export type OptionSpec =
   | { type: "list" | "paths"; min?: number; max?: number }
   | { type: OptionType }
 
+/** A JSON object: the value of a `json` setting. */
+export type JsonObject = Readonly<Record<string, JsonValue>>
+
 /** A value of one of the package's own settings. */
-export type ToolOptionValue = string | boolean | number | readonly string[]
+export type ToolOptionValue = string | boolean | number | readonly string[] | JsonObject
 
 /** The values of the package's own settings, by name; one not given is absent. */
 export type ToolOptions = Readonly<Record<string, ToolOptionValue>>
@@ -64,6 +68,8 @@ export type ToolOptions = Readonly<Record<string, ToolOptionValue>>
 export type ToolContext = {
   /** The working directory the call runs in. */
   cwd: string
+  /** Whoever the call is made for: an opaque text the entry point supplies. A tool compares it for equality and nothing else. */
+  caller: string
   /** A directory that is never the caller's working tree (where these tools are installed); a tool must refuse to treat it as the caller's tree. */
   ownDir?: string
   /** The package's own settings the call can read, such as a path to a file of rules. */
@@ -73,6 +79,8 @@ export type ToolContext = {
   confirm?(request: ConfirmRequest): Promise<boolean>
   /** Grants, for a call no person can be asked about; absent or not `unattended`, nothing changes. */
   grants?: GrantContext
+  /** What the call takes from its surroundings; absent, the real ones. A test supplies its own. */
+  runtime?: ToolRuntime
 }
 
 /**

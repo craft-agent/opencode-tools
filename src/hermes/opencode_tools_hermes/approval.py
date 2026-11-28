@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from .caller import caller_flags
 from .context import PluginContext
 from .listing import READ_CLASS, ToolInfo
 from . import card, project
@@ -179,6 +180,7 @@ def resolve_target(
     language: str | None = None,
     harness_language: Callable[[], str | None] = lambda: display_language(),
     option_flags: list[str] | None = None,
+    caller: list[str] | None = None,
 ) -> Target:
     """What ``target`` prints: ``["*"]`` for resources that cannot be told, no description for one absent or bad.
 
@@ -190,6 +192,7 @@ def resolve_target(
             [
                 "target", tool_id, "--cwd", agent_cwd(),
                 *language_flags(language, _known(harness_language)), *(option_flags or []),
+                *(caller or []),
             ],
             stdin=json.dumps(run_arguments(args)),
             timeout=TARGET_TIMEOUT_SECONDS,
@@ -276,7 +279,7 @@ def make_hook(
                 if pins is not None and call is not None:
                     pins.take(call)
                 return {"action": "block", "message": refused or GUARD_FAILED_TEXT}
-        target = resolve_target(runtime, tool.id, args, language, harness_language, option_flags)
+        target = resolve_target(runtime, tool.id, args, language, harness_language, option_flags, caller_flags(kwargs))
         if target.refused:
             if pins is not None and call is not None:
                 pins.take(call)

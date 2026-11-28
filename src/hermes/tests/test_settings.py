@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import datetime
+import json
 import unittest
 from typing import Any
 from unittest import mock
@@ -55,8 +57,42 @@ class SettingsFlagsTest(unittest.TestCase):
 
 
 class OptionFlagsTest(unittest.TestCase):
-    def test_the_starter_has_no_tool_options(self) -> None:
-        self.assertEqual(project.OPTIONS, {})
+    def test_the_package_declares_the_roles_option(self) -> None:
+        self.assertEqual(project.OPTIONS, {"roles": "json"})
+
+    def test_a_mapping_is_forwarded_as_one_compact_json_argument(self) -> None:
+        roles = {"review": {"agent": "plan", "policy": "read-only"}, "lead": {"agent": "build", "policy": "write", "note": "日本語"}}
+        flags = settings.option_flags(StubContext({"roles": roles}), {"roles": "json"})
+        self.assertEqual(
+            flags,
+            [
+                "--roles",
+                '{"review":{"agent":"plan","policy":"read-only"},"lead":{"agent":"build","policy":"write","note":"日本語"}}',
+            ],
+        )
+        self.assertEqual(json.loads(flags[1]), roles)
+
+    def test_the_real_options_forward_a_configured_roles(self) -> None:
+        roles = {"review": {"agent": "plan", "policy": "read-only"}}
+        self.assertEqual(
+            settings.settings_flags(StubContext({"roles": roles})),
+            ["--roles", '{"review":{"agent":"plan","policy":"read-only"}}'],
+        )
+
+    def test_an_empty_mapping_gives_no_flag(self) -> None:
+        self.assertEqual(settings.option_flags(StubContext({"roles": {}}), {"roles": "json"}), [])
+
+    def test_a_json_setting_that_is_no_mapping_is_refused(self) -> None:
+        for value in (["plan"], "plan", 3, True, {1: "a"}):
+            with self.subTest(value=value), self.assertRaises(settings.SettingsError) as error:
+                settings.option_flags(StubContext({"roles": value}), {"roles": "json"})
+            self.assertEqual(str(error.exception), 'setting "roles" must be a mapping')
+
+    def test_a_json_setting_with_values_json_cannot_write_is_refused(self) -> None:
+        for value in ({"a": datetime.date(2026, 1, 1)}, {"a": float("nan")}, {"a": {1, 2}}):
+            with self.subTest(value=value), self.assertRaises(settings.SettingsError) as error:
+                settings.option_flags(StubContext({"roles": value}), {"roles": "json"})
+            self.assertEqual(str(error.exception), 'setting "roles" must hold only JSON values')
 
     def test_each_kind_becomes_a_flag(self) -> None:
         options = {"note_text": "text", "note_pinned": "boolean", "note_count": "number", "note_tags": "list"}

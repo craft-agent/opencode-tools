@@ -11,7 +11,7 @@ import {
 import { approvalPrompt, permissionDescription } from "./description"
 import { ENGLISH_PROMPT_WORDS, PLUGIN_TRANSLATIONS, promptTranslator, promptWords } from "./words"
 
-const CTX: ToolContext = { cwd: "/work", ownDir: "/own" }
+const CTX: ToolContext = { cwd: "/work", caller: "test", ownDir: "/own" }
 const input = z.object({ name: z.string().default("x") })
 
 const TABLE: Translations = {

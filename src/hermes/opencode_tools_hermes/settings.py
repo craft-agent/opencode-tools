@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import Mapping
 from typing import Any
@@ -83,6 +84,15 @@ def _option_flag(name: str, declaration: str | dict[str, object], value: Any) ->
             raise SettingsError(f'setting "{name}" must be a list of {expected} without commas')
         items = [item.strip() for item in value if item.strip()]
         return [flag, ",".join(items)] if items else []
+    if kind == "json":
+        if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+            raise SettingsError(f'setting "{name}" must be a mapping')
+        if not value:
+            return []
+        try:
+            return [flag, json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False)]
+        except (TypeError, ValueError):
+            raise SettingsError(f'setting "{name}" must hold only JSON values') from None
     raise SettingsError(f'unknown option type "{kind}" for "{name}"')
 
 
