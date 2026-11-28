@@ -7,6 +7,7 @@ provides_tools:
   - opencode_grant_create
   - opencode_grant_read
   - opencode_grant_revoke
+  - opencode_service_read
 provides_hooks:
   - pre_tool_call
 config_schema:
