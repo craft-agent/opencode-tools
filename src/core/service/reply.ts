@@ -96,7 +96,7 @@ export type SessionEntry = {
  * and no others: a reply of the wrong shape is `upstream_error`, never a
  * `TypeError` and never a half-empty value taken for an answer.
  */
-function read<T>(schema: z.ZodType<T>, reply: unknown): T {
+export function read<T>(schema: z.ZodType<T>, reply: unknown): T {
   const parsed = schema.safeParse(reply)
   if (!parsed.success) throw new ToolError("upstream_error", UNREADABLE_REPLY)
   return parsed.data
@@ -149,6 +149,19 @@ export function sessionOf(reply: unknown): SessionEntry {
 /** The sessions of one page of `session.list`, whose reply is `{ data, cursor }`. */
 export function sessionsOf(reply: unknown): SessionEntry[] {
   return read(z.looseObject({ data: z.array(session) }), reply).data.map(entryOf)
+}
+
+/** One page of `session.list` with the cursor of the next, which is absent on the last page. */
+export function sessionPageOf(reply: unknown): { sessions: SessionEntry[]; next?: string } {
+  const page = read(
+    z.looseObject({
+      data: z.array(session),
+      cursor: z.looseObject({ next: z.string().nullish() }),
+    }),
+    reply,
+  )
+  const next = page.cursor.next
+  return { sessions: page.data.map(entryOf), ...(next ? { next } : {}) }
 }
 
 /** The ids `session.active` lists. */
