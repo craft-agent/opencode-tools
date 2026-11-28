@@ -12,6 +12,7 @@ provides_tools:
   - opencode_run_read
   - opencode_run_start
   - opencode_run_start_write
+  - opencode_run_steer
   - opencode_service_read
 provides_hooks:
   - pre_tool_call
