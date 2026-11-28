@@ -31,6 +31,7 @@ import type {
 import { VARIANT_DEFAULT } from "../role"
 import { ANSWER_ROUTES } from "./testing.answers"
 import { CONTROL_ROUTES, JOB_ROUTES, type ControlContext } from "./testing.control"
+import { FORK_ROUTES } from "./testing.fork"
 import { blankSession, startTurn } from "./testing.lifecycle"
 import { TURN_ROUTES, type StopSession } from "./testing.turns"
 
@@ -355,7 +356,7 @@ export function createSessionRouter(state: FakeSessionState, env: SessionEnviron
     ["GET", /^\/api\/experimental\/session\/([^/]+)\/instructions\/entries$/, entryRoute(entryList)],
     ["PUT", /^\/api\/experimental\/session\/([^/]+)\/instructions\/entries\/([^/]+)$/, entryRoute(entryPut)],
     ["DELETE", /^\/api\/experimental\/session\/([^/]+)\/instructions\/entries\/([^/]+)$/, entryRoute(entryRemove)],
-    ...CONTROL_ROUTES.map(([method, pattern, handler]): [string, RegExp, Handler] => [
+    ...[...CONTROL_ROUTES, ...FORK_ROUTES].map(([method, pattern, handler]): [string, RegExp, Handler] => [
       method,
       pattern,
       withSession((session, call) => handler(session, call, context)),
