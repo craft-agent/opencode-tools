@@ -26,7 +26,8 @@ import type {
   ExperimentalSessionInstructionsEntryListOutput,
 } from "@opencode/client"
 import { VARIANT_DEFAULT } from "../role"
-import { TURN_ROUTES } from "./testing.turns"
+import { ANSWER_ROUTES } from "./testing.answers"
+import { TURN_ROUTES, type StopSession } from "./testing.turns"
 
 const HTTP_OK = 200
 const HTTP_NO_CONTENT = 204
@@ -46,6 +47,12 @@ const MESSAGE_ID_PREFIX = "msg_"
 /** A prompt the fake service received, kept beside the session and never sent in it. */
 export type FakePrompt = { id: string; text: string; delivery: SessionInboxUser["delivery"] }
 
+/** What the fake service was told to a request or a form, kept beside the session and never sent in it. `along` marks a request the rejection of another took with it, which carries the same message. `message` is present only when a non-empty one was sent. */
+export type FakeAnswer =
+  | { kind: "permission"; id: string; decision: "once" | "always" | "reject"; message?: string; along?: true }
+  | { kind: "form"; id: string; answer: Record<string, JsonValue> }
+  | { kind: "cancel"; id: string; message?: string }
+
 /** A session as the fake keeps it: the client's `SessionInfo`, and what a test reads of what was done to it. */
 export type FakeSession = SessionInfo & {
   prompts: FakePrompt[]
@@ -59,6 +66,12 @@ export type FakeSession = SessionInfo & {
   pending: PermissionRequest[]
   /** The forms (questions) the session is paused on. */
   forms: FormInfo[]
+  /** What was answered, in order: the requests replied to, the forms answered and the forms cancelled. */
+  answers: FakeAnswer[]
+  /** The ids of the forms answered or cancelled. */
+  settled: string[]
+  /** How many requests and forms the session was ever paused on, so an id stays unique once one is answered. */
+  asked: number
   /** What `session.diff` answers: the files the newest turn changed. */
   diff: FileDiffInfo[]
 }
@@ -120,11 +133,15 @@ export function blankSession(init: { id: string; projectID: string; directory: s
     messages: [],
     pending: [],
     forms: [],
+    answers: [],
+    settled: [],
+    asked: 0,
     diff: [],
   }
 }
 
-type Call = SessionCall & { params: string[] }
+/** A request with the captures of the path it matched. */
+export type Call = SessionCall & { params: string[] }
 type Handler = (call: Call) => FakeReply
 type SessionHandler = (session: FakeSession, call: Call) => FakeReply
 
@@ -164,6 +181,9 @@ export function createSessionRouter(state: FakeSessionState, env: SessionEnviron
       messages: _messages,
       pending: _pending,
       forms: _forms,
+      answers: _answers,
+      settled: _settled,
+      asked: _asked,
       diff: _diff,
       ...info
     } = session
@@ -171,6 +191,9 @@ export function createSessionRouter(state: FakeSessionState, env: SessionEnviron
   }
   const touch = (session: FakeSession) => {
     session.time.updated = env.clock.now
+  }
+  const stop: StopSession = (sessionID) => {
+    state.active = state.active.filter((id) => id !== sessionID)
   }
   const withSession =
     (handler: SessionHandler): Handler =>
@@ -320,10 +343,10 @@ export function createSessionRouter(state: FakeSessionState, env: SessionEnviron
       /^\/api\/session\/([^/]+)\/inbox$/,
       withSession((session) => ok({ data: session.inbox } satisfies { data: SessionInboxListOutput })),
     ],
-    ...TURN_ROUTES.map(([method, pattern, handler]): [string, RegExp, Handler] => [
+    ...[...TURN_ROUTES, ...ANSWER_ROUTES].map(([method, pattern, handler]): [string, RegExp, Handler] => [
       method,
       pattern,
-      withSession(handler),
+      withSession((session, call) => handler(session, call, stop)),
     ]),
     ["GET", /^\/api\/experimental\/session\/([^/]+)\/instructions\/entries$/, entryRoute(entryList)],
     ["PUT", /^\/api\/experimental\/session\/([^/]+)\/instructions\/entries\/([^/]+)$/, entryRoute(entryPut)],

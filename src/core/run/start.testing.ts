@@ -141,6 +141,9 @@ export function seedSession(service: FakeService, init: SeededSession): FakeSess
     messages: [],
     pending: [],
     forms: [],
+    answers: [],
+    settled: [],
+    asked: 0,
     diff: [],
   }
   service.state.sessions.push(session)
