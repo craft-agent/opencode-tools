@@ -7,9 +7,15 @@
 import type {
   AgentInfo,
   AgentListOutput,
+  LocationGetOutput,
+  LocationNotFoundError,
   ModelDefaultOutput,
   ModelInfo,
   ModelListOutput,
+  PluginInfo,
+  PluginListOutput,
+  Project,
+  ProjectListOutput,
   ProviderInfo,
   ProviderListOutput,
   ServerInfo,
@@ -53,6 +59,21 @@ export type FakeServiceState = {
   providers: ProviderInfo[]
   /** By directory; a directory not listed is not a repository: `vcs.get` has no provider or branch for it and `vcs.status` no files. */
   repositories: Record<string, FakeRepository>
+  /** Directories that do not exist: a request whose `location[directory]` names one answers 404 with a `LocationNotFoundError`. */
+  missing: string[]
+  /** What `plugin.list` answers once a directory is loaded. */
+  plugins: PluginInfo[]
+  /**
+   * How many requests naming a directory the service answers as for one it is
+   * still loading, per directory, before the directory is loaded: the agent,
+   * provider, model, plugin and version control routes then answer with
+   * nothing in them, as the real service does for a directory it has not
+   * opened. `0`: loaded at once; `Infinity`: never loaded. A request that names
+   * no directory is always answered from a loaded one.
+   */
+  coldReads: number
+  /** How many `vcs.get` requests for a loaded directory still answer as for one with no version control. */
+  vcsLagReads: number
 }
 
 /** A request the fake service received. */
@@ -114,21 +135,95 @@ function defaultState(): FakeServiceState {
     defaultModel: models[0]!,
     providers: [{ id: "acme", name: "Acme", activation: "enabled", package: "acme-sdk" }],
     repositories: {},
+    missing: [],
+    plugins: [fakePlugin("acme.one"), fakePlugin("acme.two")],
+    coldReads: 2,
+    vcsLagReads: 1,
   }
 }
 
-type Route = (state: FakeServiceState, location: { directory: string }) => unknown
+function fakePlugin(id: string): PluginInfo {
+  return { id, source: { type: "builtin" }, features: { server: true }, state: { status: "active" } }
+}
+
+/** What a route knows of the directory it answers for. */
+type View = {
+  /** False while the service is still loading the directory. */
+  loaded: boolean
+  /** True while a loaded directory's `vcs.get` still answers as for one with no version control. */
+  vcsLagging: boolean
+  /** Every directory a request has named so far. */
+  named: readonly string[]
+}
+
+type Route = (state: FakeServiceState, location: { directory: string }, view: View) => unknown
+
+/** The routes whose answer depends on the directory being loaded. */
+const LOADING_PATHS = new Set([
+  "/api/agent",
+  "/api/model",
+  "/api/model/default",
+  "/api/provider",
+  "/api/plugin",
+  "/api/vcs",
+  "/api/vcs/status",
+])
 
 const ROUTES: Record<string, Route> = {
   "GET /api/info": (state) => state.info satisfies ServerInfo,
-  "GET /api/agent": (state, location) => ({ location, data: state.agents }) satisfies AgentListOutput,
-  "GET /api/model": (state, location) => ({ location, data: state.models }) satisfies ModelListOutput,
-  "GET /api/model/default": (state, location) => ({ location, data: state.defaultModel }) satisfies ModelDefaultOutput,
-  "GET /api/provider": (state, location) => ({ location, data: state.providers }) satisfies ProviderListOutput,
-  "GET /api/vcs": (state, location) =>
-    ({ location, data: state.repositories[location.directory]?.vcs ?? NOT_A_REPOSITORY }) satisfies VcsGetOutput,
-  "GET /api/vcs/status": (state, location) =>
-    ({ location, data: state.repositories[location.directory]?.status ?? [] }) satisfies VcsStatusOutput,
+  "GET /api/agent": (state, location, view) =>
+    ({ location, data: view.loaded ? state.agents : [] }) satisfies AgentListOutput,
+  "GET /api/model": (state, location, view) =>
+    ({ location, data: view.loaded ? state.models : [] }) satisfies ModelListOutput,
+  "GET /api/model/default": (state, location, view) =>
+    ({ location, data: view.loaded ? state.defaultModel : null }) satisfies ModelDefaultOutput,
+  "GET /api/provider": (state, location, view) =>
+    ({ location, data: view.loaded ? state.providers : [] }) satisfies ProviderListOutput,
+  "GET /api/plugin": (state, location, view) =>
+    ({ location, data: view.loaded ? state.plugins : [] }) satisfies PluginListOutput,
+  "GET /api/vcs": (state, location, view) =>
+    ({
+      location,
+      data:
+        view.loaded && !view.vcsLagging
+          ? (state.repositories[location.directory]?.vcs ?? NOT_A_REPOSITORY)
+          : NOT_A_REPOSITORY,
+    }) satisfies VcsGetOutput,
+  "GET /api/vcs/status": (state, location, view) =>
+    ({
+      location,
+      data: view.loaded ? (state.repositories[location.directory]?.status ?? []) : [],
+    }) satisfies VcsStatusOutput,
+  "GET /api/location": (_state, location) =>
+    ({
+      directory: location.directory,
+      project: { id: projectId(location.directory), directory: location.directory, canonical: location.directory },
+    }) satisfies LocationGetOutput,
+  "GET /api/project": (state, _location, view) => {
+    const repositories = Object.keys(state.repositories)
+    const others = view.named.filter((directory) => !repositories.includes(directory))
+    return [
+      ...repositories.map((directory) =>
+        fakeProject(directory, state.repositories[directory]!.vcs.provider === "git" ? "git" : undefined),
+      ),
+      ...others.map((directory) => fakeProject(directory, undefined)),
+    ] satisfies ProjectListOutput
+  },
+}
+
+/** The id the fake gives the project of a directory: one project per directory. */
+function projectId(directory: string): string {
+  return `project:${directory}`
+}
+
+function fakeProject(directory: string, vcs: string | undefined): Project {
+  return {
+    id: projectId(directory),
+    canonical: directory,
+    ...(vcs !== undefined && { vcs }),
+    time: { created: 0, updated: 0, active: 0 },
+    sandboxes: [],
+  }
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -155,6 +250,8 @@ export function createFakeService(initial: Partial<FakeServiceState> = {}): Fake
   const state: FakeServiceState = { ...defaultState(), ...initial }
   const requests: FakeRequest[] = []
   const failures: { path: string | RegExp; outcome: FakeOutcome }[] = []
+  /** The directories requests have named, and how far each has come in loading: requests of the loading routes seen, and `vcs.get` requests since it loaded. */
+  const opened = new Map<string, { loading: number; vcs: number }>()
 
   const answer = async (request: FakeRequest): Promise<Response> => {
     const index = failures.findIndex(({ path }) =>
@@ -168,7 +265,32 @@ export function createFakeService(initial: Partial<FakeServiceState> = {}): Fake
     const route = ROUTES[`${request.method} ${request.path}`]
     if (!route) return jsonResponse({}, HTTP_NOT_FOUND)
     if (!request.authorized) return jsonResponse(UNAUTHORIZED, HTTP_UNAUTHORIZED)
-    return jsonResponse(route(state, { directory: request.query[LOCATION_QUERY] ?? DEFAULT_DIRECTORY }))
+    const named = request.query[LOCATION_QUERY]
+    if (named !== undefined && state.missing.includes(named)) {
+      const body: LocationNotFoundError = {
+        _tag: "LocationNotFoundError",
+        location: { directory: named },
+        message: `Location not found: ${named}`,
+      }
+      return jsonResponse(body, HTTP_NOT_FOUND)
+    }
+    return jsonResponse(route(state, { directory: named ?? DEFAULT_DIRECTORY }, viewOf(request.path, named)))
+  }
+
+  /** What a request for `path` finds of the directory it names, counting the request against the directory's loading. */
+  const viewOf = (path: string, named: string | undefined): View => {
+    if (named === undefined) return { loaded: true, vcsLagging: false, named: [...opened.keys()] }
+    const reads = opened.get(named) ?? { loading: 0, vcs: 0 }
+    opened.set(named, reads)
+    if (!LOADING_PATHS.has(path)) return { loaded: true, vcsLagging: false, named: [...opened.keys()] }
+    const loaded = reads.loading >= state.coldReads
+    reads.loading += 1
+    let vcsLagging = false
+    if (loaded && path === "/api/vcs") {
+      vcsLagging = reads.vcs < state.vcsLagReads
+      reads.vcs += 1
+    }
+    return { loaded, vcsLagging, named: [...opened.keys()] }
   }
 
   const serve = async (input: Parameters<typeof globalThis.fetch>[0], init?: RequestInit): Promise<Response> => {

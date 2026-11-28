@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { ClientError, OpenCode, type OpenCodeClient } from "@opencode/client"
+import { ClientError, OpenCode, isLocationNotFoundError, type OpenCodeClient } from "@opencode/client"
 import { FAKE_ENDPOINT, createFakeService, fakeRuntime, type FakeService } from "./testing"
 import { MIN_SERVICE_VERSION } from "./version"
 
@@ -60,6 +60,8 @@ describe("the fake service's routes", () => {
 
   test("a directory is not a repository unless the state says so", async () => {
     const service = createFakeService({
+      coldReads: 0,
+      vcsLagReads: 0,
       repositories: {
         [OTHER_DIRECTORY]: {
           vcs: { provider: "git", branch: { current: "main", default: "main" } },
@@ -74,6 +76,29 @@ describe("the fake service's routes", () => {
     const repository = { location: { directory: OTHER_DIRECTORY } }
     expect((await client.vcs.get(repository)).data.branch.current).toBe("main")
     expect((await client.vcs.status(repository)).data.map((file) => file.file)).toEqual(["a.txt"])
+  })
+
+  test("a directory the state lists as missing answers with a LocationNotFoundError", async () => {
+    const service = createFakeService({ missing: [OTHER_DIRECTORY], coldReads: 0 })
+    const client = clientOf(service)
+    const error = await client.agent.list({ location: { directory: OTHER_DIRECTORY } }).catch((e: unknown) => e)
+    expect(isLocationNotFoundError(error)).toBe(true)
+    expect((error as Error).message).toBe(`Location not found: ${OTHER_DIRECTORY}`)
+    expect((error as { location: unknown }).location).toEqual({ directory: OTHER_DIRECTORY })
+    expect(await client.vcs.get({ location: { directory: OTHER_DIRECTORY } }).catch((e: unknown) => e)).toBeInstanceOf(
+      Error,
+    )
+    expect((await client.agent.list({ location: { directory: DEFAULT_DIRECTORY } })).data).toHaveLength(3)
+    expect((await client.server.info()).version).toBe(MIN_SERVICE_VERSION)
+  })
+
+  test("a default model can be null, or absent through a reply of the test's own", async () => {
+    const service = createFakeService({ defaultModel: null })
+    const client = clientOf(service)
+    expect((await client.model.default()).data).toBeNull()
+    const body = JSON.stringify({ location: { directory: DEFAULT_DIRECTORY } })
+    service.failNext("/api/model/default", new Response(body, { headers: { "content-type": "application/json" } }))
+    expect((await client.model.default()).data).toBeUndefined()
   })
 
   test("an unknown path is an unexpected status", async () => {
