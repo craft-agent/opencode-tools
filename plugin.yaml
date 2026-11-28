@@ -9,6 +9,7 @@ provides_tools:
   - opencode_grant_revoke
   - opencode_request_read
   - opencode_request_reply
+  - opencode_run_interrupt
   - opencode_run_read
   - opencode_run_start
   - opencode_run_start_write

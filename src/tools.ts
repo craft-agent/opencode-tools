@@ -2,6 +2,7 @@ import type { ToolSpec } from "./core"
 import { opencodeRequestRead } from "./core/request/read.tool"
 import { opencodeRequestReply } from "./core/request/reply.tool"
 import { opencodeRunRead } from "./core/run/read.tool"
+import { opencodeRunInterrupt } from "./core/run/interrupt.tool"
 import { opencodeRunStart, opencodeRunStartWrite } from "./core/run/start.tool"
 import { opencodeRunSteer } from "./core/run/steer.tool"
 import { opencodeServiceRead } from "./core/service/read"
@@ -13,6 +14,7 @@ export const ALL_TOOLS: ToolSpec[] = [
   opencodeRunStart,
   opencodeRunStartWrite,
   opencodeRunSteer,
+  opencodeRunInterrupt,
   opencodeRequestRead,
   opencodeRequestReply,
 ]
