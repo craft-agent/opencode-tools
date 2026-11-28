@@ -138,6 +138,10 @@ export function seedSession(service: FakeService, init: SeededSession): FakeSess
     prompts: [],
     inbox: [],
     entries: {},
+    messages: [],
+    pending: [],
+    forms: [],
+    diff: [],
   }
   service.state.sessions.push(session)
   if (init.active) service.state.active.push(init.id)

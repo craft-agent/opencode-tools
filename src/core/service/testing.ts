@@ -31,6 +31,7 @@ import { createSessionRouter, defaultSessionState, type FakeReply, type FakeSess
 import { MIN_SERVICE_VERSION } from "./version"
 
 export { fakeSession, type FakeSession } from "./testing.sessions"
+export { fakeAsk, fakeChild, fakeEnd, fakeQuestion, fakeReply, fakeRetry, fakeStop } from "./testing.play"
 
 /** The endpoint the fake runtime's `discover` returns. */
 export const FAKE_ENDPOINT: ServiceEndpoint = {

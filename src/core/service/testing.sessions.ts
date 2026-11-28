@@ -5,7 +5,10 @@
  */
 import type {
   ConflictError,
+  FileDiffInfo,
+  FormInfo,
   JsonValue,
+  PermissionRequest,
   SessionActive,
   SessionCreateInput,
   SessionCreateOutput,
@@ -15,6 +18,7 @@ import type {
   SessionInboxUser,
   SessionInfo,
   SessionListOutput,
+  SessionMessageInfo,
   SessionNotFoundError,
   SessionPromptInput,
   SessionPromptOutput,
@@ -22,6 +26,7 @@ import type {
   ExperimentalSessionInstructionsEntryListOutput,
 } from "@opencode/client"
 import { VARIANT_DEFAULT } from "../role"
+import { TURN_ROUTES } from "./testing.turns"
 
 const HTTP_OK = 200
 const HTTP_NO_CONTENT = 204
@@ -30,6 +35,8 @@ const HTTP_CONFLICT = 409
 const DEFAULT_LIST_LIMIT = 50
 /** What a `parentID` filter written as `null` reaches the service as. */
 const NULL_QUERY = "null"
+/** What the fake's cursor starts with: the rest is the offset of the next page, which only the fake understands. */
+const CURSOR_PREFIX = "offset:"
 /** Ids descend from here, so a later session sorts before an earlier one. */
 const FIRST_ID_NUMBER = 99_999_999
 const ID_DIGITS = 8
@@ -46,6 +53,14 @@ export type FakeSession = SessionInfo & {
   inbox: SessionInboxUser[]
   /** The session's instruction entries, by key. */
   entries: Record<string, JsonValue>
+  /** The session's messages, oldest first: a prompt that runs appends its user message, and a test plays the rest (`testing.play.ts`). */
+  messages: SessionMessageInfo[]
+  /** The permission requests the session is paused on. */
+  pending: PermissionRequest[]
+  /** The forms (questions) the session is paused on. */
+  forms: FormInfo[]
+  /** What `session.diff` answers: the files the newest turn changed. */
+  diff: FileDiffInfo[]
 }
 
 /** The part of `FakeServiceState` the session routes read and a test changes. */
@@ -90,6 +105,25 @@ export function fakeSession(service: { state: FakeSessionState }, id: string): F
   return session
 }
 
+/** A session with nothing in it but its identity and its times: what a route or a test adds to. */
+export function blankSession(init: { id: string; projectID: string; directory: string; now: number }): FakeSession {
+  return {
+    id: init.id,
+    projectID: init.projectID,
+    cost: 0,
+    tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    time: { created: init.now, updated: init.now },
+    location: { directory: init.directory },
+    prompts: [],
+    inbox: [],
+    entries: {},
+    messages: [],
+    pending: [],
+    forms: [],
+    diff: [],
+  }
+}
+
 type Call = SessionCall & { params: string[] }
 type Handler = (call: Call) => FakeReply
 type SessionHandler = (session: FakeSession, call: Call) => FakeReply
@@ -123,7 +157,16 @@ export function createSessionRouter(state: FakeSessionState, env: SessionEnviron
 
   const find = (id: string) => state.sessions.find((session) => session.id === id)
   const report = (session: FakeSession): SessionInfo => {
-    const { prompts: _prompts, inbox: _inbox, entries: _entries, ...info } = session
+    const {
+      prompts: _prompts,
+      inbox: _inbox,
+      entries: _entries,
+      messages: _messages,
+      pending: _pending,
+      forms: _forms,
+      diff: _diff,
+      ...info
+    } = session
     return state.reportsBack ? state.reportsBack(info) : info
   }
   const touch = (session: FakeSession) => {
@@ -143,21 +186,18 @@ export function createSessionRouter(state: FakeSessionState, env: SessionEnviron
     const directory = input.location?.directory ?? env.defaultDirectory
     const now = env.clock.now
     const session: FakeSession = {
-      id: input.id ?? newId("session", SESSION_ID_PREFIX),
+      ...blankSession({
+        id: input.id ?? newId("session", SESSION_ID_PREFIX),
+        projectID: env.projectId(directory),
+        directory,
+        now,
+      }),
       ...(input.parentID && { parentID: input.parentID }),
-      projectID: env.projectId(directory),
       ...(input.agent && { agent: input.agent }),
       ...(input.model && { model: modelOf(input.model) }),
-      cost: 0,
-      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-      time: { created: now, updated: now },
       ...(input.title && { title: input.title }),
       ...(input.metadata && { metadata: { ...input.metadata } }),
       ...(input.permissions && { permissions: input.permissions.map((rule) => ({ ...rule })) }),
-      location: { directory },
-      prompts: [],
-      inbox: [],
-      entries: {},
     }
     state.sessions.push(session)
     return ok({ data: report(session) } satisfies { data: SessionCreateOutput })
@@ -165,16 +205,17 @@ export function createSessionRouter(state: FakeSessionState, env: SessionEnviron
 
   const list: Handler = ({ query }) => {
     const limit = query.limit === undefined ? DEFAULT_LIST_LIMIT : Number(query.limit)
-    const data = state.sessions
+    const start = query.cursor?.startsWith(CURSOR_PREFIX) ? Number(query.cursor.slice(CURSOR_PREFIX.length)) : 0
+    const matching = state.sessions
       .filter((session) => query.directory === undefined || session.location.directory === query.directory)
       .filter((session) => {
         if (query.parentID === undefined) return true
         return query.parentID === NULL_QUERY ? session.parentID === undefined : session.parentID === query.parentID
       })
       .sort((a, b) => b.time.updated - a.time.updated || a.id.localeCompare(b.id))
-      .slice(0, limit)
-      .map(report)
-    return ok({ data, cursor: {} } satisfies SessionListOutput)
+    const data = matching.slice(start, start + limit).map(report)
+    const next = start + limit < matching.length ? `${CURSOR_PREFIX}${start + limit}` : undefined
+    return ok({ data, cursor: next === undefined ? {} : { next } } satisfies SessionListOutput)
   }
 
   const update: SessionHandler = (session, { body }) => {
@@ -205,6 +246,7 @@ export function createSessionRouter(state: FakeSessionState, env: SessionEnviron
     if (state.runsPrompts && input.resume !== false) {
       if (!state.active.includes(session.id)) state.active.push(session.id)
       session.time.busy = env.clock.now
+      session.messages.push({ id, time: { created: env.clock.now }, type: "user", text: input.text })
     } else {
       session.inbox.push(item)
     }
@@ -278,6 +320,11 @@ export function createSessionRouter(state: FakeSessionState, env: SessionEnviron
       /^\/api\/session\/([^/]+)\/inbox$/,
       withSession((session) => ok({ data: session.inbox } satisfies { data: SessionInboxListOutput })),
     ],
+    ...TURN_ROUTES.map(([method, pattern, handler]): [string, RegExp, Handler] => [
+      method,
+      pattern,
+      withSession(handler),
+    ]),
     ["GET", /^\/api\/experimental\/session\/([^/]+)\/instructions\/entries$/, entryRoute(entryList)],
     ["PUT", /^\/api\/experimental\/session\/([^/]+)\/instructions\/entries\/([^/]+)$/, entryRoute(entryPut)],
     ["DELETE", /^\/api\/experimental\/session\/([^/]+)\/instructions\/entries\/([^/]+)$/, entryRoute(entryRemove)],
