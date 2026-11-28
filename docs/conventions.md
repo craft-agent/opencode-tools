@@ -997,8 +997,13 @@ ruleset. Every agent's rules start by allowing everything.
   package keeps no record of a run; a second record would disagree with the
   service.
 - **A turn ends at its own idle message**, which carries its outcome, never at
-  a session-level field or an exit status. A turn is everything since the
-  idle message before it, briefs added on the way included.
+  an exit status or at what the session last said. The service writes the
+  session's own outcome and idle time with that message, and a run's state is
+  read from those: a list of a caller's runs would otherwise read every
+  session's messages. A turn is everything since the idle message before it,
+  briefs added on the way included.
+- **The result of a turn is the text of its newest reply that ended without
+  an error**, which is how the service itself reads a subagent's result.
 - **A run is its session and its subagents' sessions.** A subagent is a child
   session that runs in the background of its parent's turn, and its requests
   are listed under its own id. So a run whose own turn has ended is still
