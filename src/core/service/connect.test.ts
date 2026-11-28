@@ -34,7 +34,7 @@ describe("connectService: a running service", () => {
   test("hands out the client, the version, whether it was started and the call's time, and nothing else", async () => {
     const service = createFakeService()
     const connection = await connectService({ runtime: fakeRuntime(service) })
-    expect(Object.keys(connection).sort()).toEqual(["client", "deadline", "started", "version"])
+    expect(Object.keys(connection).sort()).toEqual(["client", "deadline", "started", "tmp", "version"])
     expect((await connection.client.agent.list()).data).toHaveLength(3)
     expect(service.requests.at(-1)?.authorized).toBe(true)
   })

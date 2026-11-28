@@ -5,7 +5,8 @@ import { abortError } from "../exec"
 import { runtimeOf, type ServiceEndpoint, type ToolRuntime } from "../runtime"
 import type { ToolContext } from "../tool"
 import { serviceEnv } from "./env"
-import { REQUEST_TIMEOUT_MS, UNREADABLE_REPLY, serviceError } from "./errors"
+import { REQUEST_TIMEOUT_MS, serviceError } from "./errors"
+import { infoOf } from "./reply"
 import { secretsOf } from "./secrets"
 import { checkServiceVersion } from "./version"
 
@@ -27,6 +28,8 @@ export type ServiceConnection = {
   client: OpenCodeClient
   /** The version the service reports. */
   version: string
+  /** The scratch directory the service reports, when it reports one. */
+  tmp?: string
   /** True when this call found no service and started one. Two calls made at once may both say so: the service settles which process stays. */
   started: boolean
   /** The call's time, the one given to `connectService` or else started by it: starting, loading a directory and every request draw on it. */
@@ -162,11 +165,9 @@ export async function connectService(ctx: ConnectContext, options: ConnectOption
     (error) => serviceError(error, { signal: ctx.signal, timeoutMs, deadline, redact }),
   )
   // The reply is JSON the client does not validate.
-  const info: unknown = await client.server.info()
-  const version = isObject(info) && "version" in info ? info.version : undefined
-  if (typeof version !== "string") throw new ToolError("upstream_error", UNREADABLE_REPLY)
+  const { version, tmp } = infoOf(await client.server.info())
   checkServiceVersion(version)
-  return { client, version, started, deadline }
+  return { client, version, ...(tmp !== undefined && { tmp }), started, deadline }
 }
 
 /** Connects, then runs `use` with the service. What `use` throws is its own: only the failures of the client's requests are mapped, where they are made. */

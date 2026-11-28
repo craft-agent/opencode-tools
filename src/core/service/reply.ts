@@ -1,5 +1,6 @@
 import { z } from "zod"
-import { ToolError } from "../errors"
+import { ToolError, type JsonValue } from "../errors"
+import type { Rule } from "../run/rule"
 import { UNREADABLE_REPLY } from "./errors"
 
 /** An id a result or a decision uses: an empty one names nothing. */
@@ -41,6 +42,27 @@ const vcs = z.looseObject({
   branch: z.looseObject({ current: z.string().nullish() }),
 })
 
+const rule = z.looseObject({ action: z.string(), resource: z.string(), effect: z.enum(["allow", "deny", "ask"]) })
+
+const session = z.looseObject({
+  id,
+  parentID: id.optional(),
+  projectID: id,
+  agent: z.string().optional(),
+  model: modelRef.optional(),
+  permissions: z.array(rule).optional(),
+  metadata: z.record(z.string(), z.json()).optional(),
+  location: z.looseObject({ directory: id }),
+  time: z.looseObject({
+    created: z.number(),
+    updated: z.number(),
+    busy: z.number().optional(),
+    idle: z.number().optional(),
+  }),
+  title: z.string().optional(),
+  outcome: z.enum(["succeeded", "failed", "interrupted"]).optional(),
+})
+
 /** An agent as the handlers read it. */
 export type AgentEntry = z.output<typeof agent>
 /** A model as the handlers read it. */
@@ -51,6 +73,22 @@ export type ProviderEntry = z.output<typeof provider>
 export type ModelId = { providerID: string; id: string }
 /** What a directory's version control says, as the handlers read it. */
 export type VcsEntry = z.output<typeof vcs>
+/** A session as the handlers read it. */
+export type SessionEntry = {
+  id: string
+  parentID?: string
+  projectID: string
+  agent?: string
+  model?: { providerID: string; id: string; variant?: string }
+  /** As stored: a list of { action, resource, effect }; absent when the session has none. */
+  permissions?: Rule[]
+  /** The session's metadata as stored: any JSON object. */
+  metadata?: Record<string, JsonValue>
+  directory: string
+  time: { created: number; updated: number; busy?: number; idle?: number }
+  title?: string
+  outcome?: "succeeded" | "failed" | "interrupted"
+}
 
 /**
  * The reply as `schema` reads it. The client does not validate JSON, so each
@@ -62,6 +100,65 @@ function read<T>(schema: z.ZodType<T>, reply: unknown): T {
   const parsed = schema.safeParse(reply)
   if (!parsed.success) throw new ToolError("upstream_error", UNREADABLE_REPLY)
   return parsed.data
+}
+
+/** The version and the scratch directory a `server.info` reply gives; `tmp` is absent when the service reports none. */
+export function infoOf(reply: unknown): { version: string; tmp?: string } {
+  const info = read(
+    z.looseObject({ version: z.string(), paths: z.looseObject({ tmp: z.unknown().optional() }).optional() }),
+    reply,
+  )
+  const tmp = info.paths?.tmp
+  return typeof tmp === "string" && tmp !== "" ? { version: info.version, tmp } : { version: info.version }
+}
+
+function entryOf(row: z.output<typeof session>): SessionEntry {
+  const {
+    id: sessionId,
+    parentID,
+    projectID,
+    agent,
+    model,
+    permissions,
+    metadata,
+    location,
+    time,
+    title,
+    outcome,
+  } = row
+  return {
+    id: sessionId,
+    projectID,
+    directory: location.directory,
+    time,
+    ...(parentID !== undefined && { parentID }),
+    ...(agent !== undefined && { agent }),
+    ...(model !== undefined && { model }),
+    ...(permissions !== undefined && { permissions }),
+    ...(metadata !== undefined && { metadata }),
+    ...(title !== undefined && { title }),
+    ...(outcome !== undefined && { outcome }),
+  }
+}
+
+/** The session of a `session.get` reply. */
+export function sessionOf(reply: unknown): SessionEntry {
+  return entryOf(read(session, reply))
+}
+
+/** The sessions of one page of `session.list`, whose reply is `{ data, cursor }`. */
+export function sessionsOf(reply: unknown): SessionEntry[] {
+  return read(z.looseObject({ data: z.array(session) }), reply).data.map(entryOf)
+}
+
+/** The ids `session.active` lists. */
+export function activeOf(reply: unknown): Set<string> {
+  return new Set(Object.keys(read(z.record(z.string(), z.unknown()), reply)))
+}
+
+/** The id of the inbox item a prompt was admitted as. */
+export function admittedOf(reply: unknown): string {
+  return read(z.looseObject({ id }), reply).id
 }
 
 /** The agents of an `agent.list` reply. */
