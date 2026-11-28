@@ -9,6 +9,14 @@ import type { Roster } from "./roster"
 import { needsInbox, runState, type StateResult } from "./state"
 import { sessionIfThere } from "./tree"
 
+/**
+ * The type of an inbox item that is a prompt. In a session that was never
+ * busy only a prompt is the sign of a turn about to begin: a fork holds what
+ * waited unread in its source's inbox, copied as items made at the fork, and
+ * a report among them starts nothing.
+ */
+const PROMPT_ITEM = "user"
+
 /** A request a run is paused on, as the service lists it. */
 export type PendingRequest =
   | { kind: "permission"; id: string; session: string; action: string; resources: string[] }
@@ -106,7 +114,10 @@ export async function observeRun(
 
   const facts = { session: current, waiting, active }
   const inboxCreated = needsInbox(facts)
-    ? newestInboxOf(await service.client.session.inbox.list({ sessionID: root.id }))
+    ? newestInboxOf(
+        await service.client.session.inbox.list({ sessionID: root.id }),
+        current.time.busy === undefined ? PROMPT_ITEM : undefined,
+      )
     : undefined
   const state = runState({
     ...facts,

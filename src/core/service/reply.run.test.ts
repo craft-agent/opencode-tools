@@ -137,6 +137,18 @@ describe("the other readers", () => {
     unreadable(() => newestInboxOf("none"))
   })
 
+  test("newestInboxOf with a type looks at the items of that type alone", () => {
+    const items = [
+      { type: "user", time: { created: 3 } },
+      { type: "synthetic", time: { created: 9 } },
+      { time: { created: 12 } },
+    ]
+    expect(newestInboxOf(items, "user")).toBe(3)
+    expect(newestInboxOf(items, "synthetic")).toBe(9)
+    expect(newestInboxOf(items, "compaction")).toBeUndefined()
+    expect(newestInboxOf(items)).toBe(12)
+  })
+
   test("sessionPageOf gives the sessions and the cursor of the next page, which the last page has none of", () => {
     const row = { id: "s", projectID: "p", location: { directory: "/d" }, time: { created: 1, updated: 2 } }
     expect(sessionPageOf({ data: [row], cursor: { next: "c1" } })).toMatchObject({

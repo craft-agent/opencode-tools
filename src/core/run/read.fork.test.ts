@@ -25,6 +25,18 @@ describe("a run that is a fork", () => {
     }
   })
 
+  test("holds no turn though a report of its source waits in its inbox, while a prompt just admitted is a turn about to begin", async () => {
+    const { service, ctx } = runSetup()
+    const fork = forked(boundRun(service, "ses_fork"))
+    const waiting = { sessionID: fork.id, time: { created: service.clock.now } }
+    const report = { type: "synthetic", payload: { text: "Subagent cancelled" }, delivery: "steer" } as const
+    fork.inbox.push({ ...waiting, ...report, id: "msg_copied" })
+    expect(await readRun({ method: "get", session: fork.id }, ctx)).toMatchObject({ state: "unknown" })
+
+    fork.inbox.push({ ...waiting, id: "msg_brief", type: "user", payload: { text: "Go on." }, delivery: "queue" })
+    expect(await readRun({ method: "get", session: fork.id }, ctx)).toMatchObject({ state: "running" })
+  })
+
   test("is listed with the session it was copied from, and another run without", async () => {
     const { service, ctx } = runSetup()
     forked(boundRun(service, "ses_fork"))

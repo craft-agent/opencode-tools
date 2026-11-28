@@ -138,6 +138,20 @@ describe("the fake service's fork", () => {
     expect((await client.message.list({ sessionID: fork.id, order: "asc" })).data).toEqual(copied)
   })
 
+  test("copies what waits unread in the inbox as items made at the fork, under new ids", async () => {
+    const service = createFakeService()
+    const client = clientOf(service)
+    const id = await source(client, service)
+    const waiting = await client.session.prompt({ sessionID: id, text: "later", resume: false })
+    service.clock.now += 10
+    const fork = await client.session.fork({ sessionID: id })
+    const [copied] = await client.session.inbox.list({ sessionID: fork.id })
+    expect(copied).toEqual({ ...waiting, id: copied!.id, sessionID: fork.id, time: { created: service.clock.now } })
+    expect(copied!.id).not.toBe(waiting.id)
+    expect(await client.session.inbox.list({ sessionID: id })).toEqual([waiting])
+    expect(await client.session.active()).toEqual({})
+  })
+
   test("a session with no messages is an InvalidRequestError, and one that does not exist a SessionNotFoundError", async () => {
     const service = createFakeService()
     const client = clientOf(service)
