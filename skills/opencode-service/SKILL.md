@@ -15,9 +15,13 @@ The service is the person's own OpenCode, running in the background. The tool
 reads it. Asking about a directory opens it in OpenCode, which then keeps it
 as a project, as starting OpenCode there would; nothing else a person keeps
 changes. When no service is running, the
-call starts one and leaves it running; it waits up to 30 seconds for the
-service to come up, and its result has `service_started` true. Say so when
-it happens: the person did not ask for a service.
+call starts one and leaves it running, and its result has `service_started`
+true. Say so when it happens: the person did not ask for a service.
+
+A call ends within the `wait_seconds` setting of its start, 50 seconds unless
+it is set, whatever it had to wait for: the service starting, the directory
+loading or a slow answer. One that runs out fails as `upstream_error` and
+says what it was waiting for; calling again usually finds the service ready.
 
 ## Methods
 

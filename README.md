@@ -127,8 +127,14 @@ Add the server to the host's MCP configuration. Flags go in `args`:
 The tools reach the OpenCode service a person already runs, through
 OpenCode's own client. When no service is running, a call starts one
 (`opencode serve --service`) and leaves it running. A read does too, also
-under `read_only`, and its result says so. The call waits up to 30 seconds
-for the service to come up.
+under `read_only`, and its result says so.
+
+A call ends within `wait_seconds` of its start, 50 seconds unless you set it:
+the service starting (up to 30 seconds), a directory loading and each request
+(10 seconds) all draw on that one limit. A harness that ends a tool call
+after a minute therefore never cuts one off. A call that runs out fails and
+says what it was waiting for. The Hermes plugin ends a call 30 seconds after
+the setting.
 
 A service keeps the environment it was started with for every session it
 later serves, a person's own included. So one the tools start is given only
