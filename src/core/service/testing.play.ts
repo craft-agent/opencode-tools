@@ -7,14 +7,25 @@
 import type {
   FormField,
   FormInfo,
+  JobShell,
+  JobSubagent,
   JsonValue,
   PermissionRequest,
   SessionMessageAssistant,
   SessionMessageAssistantTool,
   SessionMessageIdle,
+  SessionMessageInfo,
   SessionStructuredError,
 } from "@opencode/client"
-import { blankSession, fakeSession, type FakeSession, type FakeSessionState } from "./testing.sessions"
+import {
+  blankSession,
+  deactivate,
+  deliverSteers,
+  endTurn,
+  nextMessageId,
+  SUBAGENT_DESCRIPTION,
+} from "./testing.lifecycle"
+import { fakeSession, type FakeSession, type FakeSessionState } from "./testing.sessions"
 
 /** What the helpers need of the fake service: what it holds and its clock. */
 export type FakePlayer = { state: FakeSessionState; clock: { now: number } }
@@ -23,13 +34,15 @@ export type FakePlayer = { state: FakeSessionState; clock: { now: number } }
 type FakeQuestion = { header: string; question: string; options: string[]; multiple?: boolean }
 
 const AGENT = "plan"
+/** The agent a subagent's job names when its session has none. */
+const SUBAGENT = "scout"
 const MODEL = { providerID: "acme", id: "model-1" }
 /** The title of every form the agent's question tool makes. */
 const QUESTIONS_TITLE = "Questions"
 
 function assistantOf(session: FakeSession, now: number): SessionMessageAssistant {
   return {
-    id: `${session.id}:message${session.messages.length + 1}`,
+    id: nextMessageId(session),
     time: { created: now },
     type: "assistant",
     agent: session.agent ?? AGENT,
@@ -48,31 +61,24 @@ export function fakeReply(service: FakePlayer, sessionID: string, text: string):
   return message
 }
 
-/** Ends the session's turn as the service does: the `idle` message, the session's outcome and idle time at the clock, and out of the active set. */
+/** Ends the session's turn as the service does: the `idle` message, the session's outcome and idle time at the clock, out of the active set, and, for a subagent's session, its job gone from the list. */
 export function fakeEnd(
   service: FakePlayer,
   sessionID: string,
   outcome: SessionMessageIdle["outcome"],
   error?: SessionStructuredError,
 ): void {
-  const session = fakeSession(service, sessionID)
-  const now = service.clock.now
-  session.messages.push({
-    id: `${session.id}:message${session.messages.length + 1}`,
-    time: { created: now },
-    type: "idle",
-    outcome,
-    ...(error !== undefined && { error }),
-  })
-  session.outcome = outcome
-  session.time.idle = now
-  session.time.updated = now
-  fakeStop(service, sessionID)
+  endTurn(service.state, fakeSession(service, sessionID), service.clock.now, outcome, error)
 }
 
 /** Takes the session out of the active set with no end written: a turn that stopped, as when the service did. */
 export function fakeStop(service: FakePlayer, sessionID: string): void {
-  service.state.active = service.state.active.filter((id) => id !== sessionID)
+  deactivate(service.state, sessionID)
+}
+
+/** The session takes a step: every `steer` item of its inbox leaves it and becomes a message at the clock, in order, and the queued stay; returns the messages it added. */
+export function fakeStep(service: FakePlayer, sessionID: string): SessionMessageInfo[] {
+  return deliverSteers(fakeSession(service, sessionID), service.clock.now)
 }
 
 /** Pauses the session on a permission request; returns it. */
@@ -186,7 +192,7 @@ export function fakeRetry(
   session.messages.push(added)
 }
 
-/** A subagent's session: a child of `parentID` in its directory with the parent's metadata and permissions copied, active and busy at the clock. */
+/** A subagent's session: a child of `parentID` in its directory with the parent's metadata and permissions copied and no instruction entries, active and busy at the clock, and the running subagent job that lists it. */
 export function fakeChild(service: FakePlayer, parentID: string): FakeSession {
   const parent = fakeSession(service, parentID)
   const now = service.clock.now
@@ -206,5 +212,34 @@ export function fakeChild(service: FakePlayer, parentID: string): FakeSession {
   child.time.busy = now
   service.state.sessions.push(child)
   service.state.active.push(child.id)
+  service.state.jobs.push({
+    kind: "subagent",
+    id: child.id,
+    sessionID: parentID,
+    status: "running",
+    time: { started: now },
+    childSessionID: child.id,
+    agent: child.agent ?? SUBAGENT,
+    description: SUBAGENT_DESCRIPTION,
+  } satisfies JobSubagent)
   return child
+}
+
+/** A command the session moved to the background: adds the running shell job, numbered after the jobs the session has, and returns it. */
+export function fakeJob(service: FakePlayer, sessionID: string, command: string): JobShell {
+  fakeSession(service, sessionID)
+  const held = service.state.jobs.filter((job) => job.sessionID === sessionID && job.kind === "shell").length
+  const id = `${sessionID}:job${held + 1}`
+  const job = {
+    kind: "shell",
+    id,
+    sessionID,
+    status: "running",
+    title: command,
+    time: { started: service.clock.now },
+    shellID: id,
+    command,
+  } satisfies JobShell
+  service.state.jobs.push(job)
+  return job
 }

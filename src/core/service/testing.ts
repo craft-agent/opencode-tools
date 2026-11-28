@@ -35,10 +35,12 @@ export {
   fakeAsk,
   fakeChild,
   fakeEnd,
+  fakeJob,
   fakeQuestion,
   fakeQuestions,
   fakeReply,
   fakeRetry,
+  fakeStep,
   fakeStop,
   fakeToolAsk,
 } from "./testing.play"

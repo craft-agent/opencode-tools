@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { OpenCode, isConflictError, isSessionNotFoundError, type OpenCodeClient } from "@opencode/client"
-import { FAKE_ENDPOINT, createFakeService, fakeRuntime, fakeSession, type FakeService } from "./testing"
+import { FAKE_ENDPOINT, createFakeService, fakeChild, fakeRuntime, fakeSession, type FakeService } from "./testing"
 
 function clientOf(service: FakeService): OpenCodeClient {
   return OpenCode.make({ baseUrl: FAKE_ENDPOINT.url, headers: FAKE_ENDPOINT.headers, fetch: service.fetch })
@@ -230,13 +230,43 @@ describe("the fake service's instruction entries", () => {
     const entries = client.experimental.session.instructions.entry
     const { id } = await client.session.create()
     await entries.put({ sessionID: id, key: "note", value: "one" })
-    await entries.put({ sessionID: id, key: "a/b", value: { n: 1 } })
+    await entries.put({ sessionID: id, key: "a.b-c_d", value: { n: 1 } })
     expect(await entries.list({ sessionID: id })).toEqual([
       { key: "note", value: "one" },
-      { key: "a/b", value: { n: 1 } },
+      { key: "a.b-c_d", value: { n: 1 } },
     ])
     await entries.remove({ sessionID: id, key: "note" })
-    expect(fakeSession(service, id).entries).toEqual({ "a/b": { n: 1 } })
+    expect(fakeSession(service, id).entries).toEqual({ "a.b-c_d": { n: 1 } })
+  })
+
+  test("a key outside the pattern is an InvalidRequestError on put and on remove", async () => {
+    const service = createFakeService()
+    const client = clientOf(service)
+    const entries = client.experimental.session.instructions.entry
+    const { id } = await client.session.create()
+    for (const key of ["Note", "a/b", "-dash", ".dot", "a b"]) {
+      const expected = {
+        _tag: "InvalidRequestError",
+        message: 'Expected a string matching the RegExp ^[a-z0-9][a-z0-9._-]*$\n  at ["key"]',
+        kind: "Params",
+      }
+      const put = await entries.put({ sessionID: id, key, value: 1 }).catch((e: unknown) => e)
+      const remove = await entries.remove({ sessionID: id, key }).catch((e: unknown) => e)
+      expect(put).toMatchObject(expected)
+      expect(remove).toMatchObject(expected)
+    }
+    expect(fakeSession(service, id).entries).toEqual({})
+  })
+
+  test("a subagent's session has no entries, whatever its parent holds", async () => {
+    const service = createFakeService()
+    const client = clientOf(service)
+    const entries = client.experimental.session.instructions.entry
+    const { id } = await client.session.create()
+    await entries.put({ sessionID: id, key: "note", value: "one" })
+    const child = fakeChild(service, id)
+    expect(await entries.list({ sessionID: child.id })).toEqual([])
+    expect(fakeSession(service, child.id).entries).toEqual({})
   })
 
   test("a service that refuses them answers 404", async () => {
