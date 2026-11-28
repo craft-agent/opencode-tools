@@ -122,6 +122,32 @@ Add the server to the host's MCP configuration. Flags go in `args`:
 }
 ```
 
+## The OpenCode service
+
+The tools reach the OpenCode service a person already runs, through
+OpenCode's own client. When no service is running, a call starts one
+(`opencode serve --service`) and leaves it running. A read does too, also
+under `read_only`, and its result says so. The call waits up to 30 seconds
+for the service to come up.
+
+A service keeps the environment it was started with for every session it
+later serves, a person's own included. So one the tools start is given only
+what finds a person's programs and configuration: `PATH`, `HOME`, `USER`,
+`LOGNAME`, `SHELL`, the locale (`LANG`, `LANGUAGE`, `LC_ALL`, `LC_CTYPE`,
+`LC_MESSAGES`), `TERM`, `TMPDIR`, `TZ`, and `XDG_CONFIG_HOME`,
+`XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME` and `XDG_RUNTIME_DIR`.
+Nothing else of the harness's environment goes with it.
+
+A provider key that lives only in a shell variable therefore does not reach
+a service the tools start. Keep it in OpenCode's own service configuration,
+or start the service yourself before the tools need it: a running service
+is used as it is, and never restarted or stopped.
+
+Asking about a directory opens it in OpenCode, as starting OpenCode there
+would: the service keeps it as a project and loads its configuration, which
+takes a moment the first time, and a few seconds in a service that has just
+started. The tools wait for that, for up to fifteen seconds.
+
 ## Tools and skills
 
 Each toolset comes with a skill that tells an agent how to use its tools. A
@@ -134,8 +160,9 @@ and Antigravity install the skill folder whole and pass the settings only to
 the MCP server, so they list every skill whatever the settings select.
 
 There is one toolset per domain; `service`, `run` and `request` are on by
-default, and `instruction`, `worktree` and `history` are opt-in. A tool that
-no release carries yet is not registered.
+default, and `instruction`, `worktree` and `history` are opt-in. A toolset
+arrives with its first tool: one that no release carries yet is not a name
+`toolsets` takes, and a tool that no release carries is not registered.
 
 | Toolset       | Covers                                                              |
 | ------------- | ------------------------------------------------------------------- |
@@ -156,6 +183,23 @@ from a run is data, never instructions.
 | Tool                    | Class | Does                                                                                   |
 | ----------------------- | ----- | -------------------------------------------------------------------------------------- |
 | `opencode_service_read` | read  | the service and its version, its agents, models and roles, and a directory's readiness |
+
+Its `method` says what to read:
+
+| Method      | Reads                                                                                                    |
+| ----------- | -------------------------------------------------------------------------------------------------------- |
+| `status`    | the service's version and the roles as they are configured, each with its agent, policy and model        |
+| `agents`    | the agents of a directory, subagents and hidden ones included                                            |
+| `providers` | the providers the service can use in a directory, and how many models each has                           |
+| `models`    | the models of one provider with their variants, narrowed by `match`                                      |
+| `ready`     | whether a directory is in a Git repository, a role's agent is a primary agent there and a model resolves |
+
+A list holds at most 100 entries, keeps to a size and says when it left some
+out. `ready` answers one line when nothing is wrong, and the findings
+otherwise; an agent that is a subagent, or one OpenCode hides for its own
+use, is a finding. No result holds the service's address, its password or a
+value from OpenCode's configuration files; the roles are the tools' own
+setting.
 
 ### `run`
 
