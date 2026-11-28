@@ -33,6 +33,11 @@ export function textOf(brief: string, note: string, place: NotePlace): string {
   return place === "prompt" ? `${note}\n\n${brief}` : brief
 }
 
+/** An id for a message the tool sends, of the form the service's own ids have; the service takes a prompt of one id once. */
+export function newMessageId(): string {
+  return `${MESSAGE_ID_PREFIX}${randomUUID().replaceAll("-", "")}`
+}
+
 /**
  * Sends the brief once, queued, with an id made here (the service takes a
  * prompt of one id once). A failure that leaves it open whether the service
@@ -41,7 +46,7 @@ export function textOf(brief: string, note: string, place: NotePlace): string {
  * cancelled, are thrown as they are.
  */
 export async function sendBrief(service: ServiceConnection, sessionID: string, text: string): Promise<StartState> {
-  const id = `${MESSAGE_ID_PREFIX}${randomUUID().replaceAll("-", "")}`
+  const id = newMessageId()
   try {
     admittedOf(await service.client.session.prompt({ sessionID, id, text, delivery: "queue" }))
     return "running"

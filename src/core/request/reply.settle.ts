@@ -1,15 +1,12 @@
-import { isAbortError, isToolError } from "../errors"
 import type { Binding } from "../run/binding"
-import { describeRun } from "../run/read.get"
 import { observeRun } from "../run/read.observe"
 import { WAIT_POLL_MS, WAIT_RESERVE_MS } from "../run/read.wait"
 import { rosterOf } from "../run/roster"
+import { summarizeRun, type RunSummary } from "../run/summary"
 import { runtimeOf } from "../runtime"
 import type { ServiceConnection } from "../service/connect"
-import { cleaned } from "../service/errors"
 import type { SessionEntry } from "../service/reply"
 import type { ToolContext } from "../tool"
-import type { RequestReplyOutput } from "./reply.schemas"
 
 /** How long a call that sent a reply waits for the run to pause again or end, on the runtime's clock. */
 export const SETTLE_MS = 10_000
@@ -18,9 +15,7 @@ export const SETTLE_MS = 10_000
  * The run as the call leaves it, or why it could not be read, and the ids of
  * the requests the first look found it paused on; none when that look failed.
  */
-export type Settled = { firstPending?: ReadonlySet<string> } & (
-  { run: NonNullable<RequestReplyOutput["run"]> } | { run_error: NonNullable<RequestReplyOutput["run_error"]> }
-)
+export type Settled = { firstPending?: ReadonlySet<string> } & RunSummary
 
 /**
  * Looks at the run after the replies: once when none was sent, else at
@@ -46,10 +41,10 @@ export async function settleRun(
     return observeRun(service, roster, root, ctx, { rootFresh: false, readIdleRoot: true })
   }
 
-  let firstPending: ReadonlySet<string> | undefined
-  try {
+  const seen: { firstPending?: ReadonlySet<string> } = {}
+  const summary = await summarizeRun(service, binding, ctx, async () => {
     const first = await look(session)
-    firstPending = new Set(first.requests.map((request) => request.id))
+    seen.firstPending = new Set(first.requests.map((request) => request.id))
     let observed = first
     while (sent && observed.state.state === "running") {
       const leftMs = Math.min(endsAt - rt.now(), service.deadline.remaining() - WAIT_RESERVE_MS)
@@ -57,18 +52,7 @@ export async function settleRun(
       await rt.sleep(Math.min(WAIT_POLL_MS, leftMs), ctx.signal)
       observed = await look(observed.root)
     }
-    const {
-      method: _method,
-      service_started: _started,
-      session: _session,
-      ...run
-    } = await describeRun(service, "get", binding, observed)
-    return { run, firstPending }
-  } catch (error) {
-    if (isAbortError(error) || ctx.signal?.aborted || !isToolError(error)) throw error
-    return {
-      run_error: { code: error.code, message: cleaned(error.message) },
-      ...(firstPending !== undefined && { firstPending }),
-    }
-  }
+    return observed
+  })
+  return { ...summary, ...seen }
 }
