@@ -20,6 +20,8 @@ const CALL_ENDING_MS = 100
 const MAX_TEXT_LENGTH = 300
 /** What a secret in a service's own text becomes. */
 const REDACTED = "[redacted]"
+/** What a session that does not exist, or that is not the caller's to see, is told. */
+export const SESSION_NOT_FOUND = "The session does not exist."
 const NOT_FOUND_SUFFIX = "NotFoundError"
 const CREDENTIALS_REFUSED = "The OpenCode service refused the tools' credentials."
 const STARTING_OR_STOPPING = "The OpenCode service is starting or stopping; try again in a moment."
@@ -112,7 +114,7 @@ function clientFailure(error: ClientError, timeoutMs: number, deadline: Deadline
 
 /** The failure of an error the route declares, which the client throws as a plain `Error` named by the body's `_tag`; `undefined` for any other. */
 function declaredFailure(error: Error, secrets: readonly string[]): ToolError | undefined {
-  if (isSessionNotFoundError(error)) return new ToolError("not_found", "The session does not exist.")
+  if (isSessionNotFoundError(error)) return new ToolError("not_found", SESSION_NOT_FOUND)
   if (isUnauthorizedError(error)) return upstream(CREDENTIALS_REFUSED)
   if (isServiceUnavailableError(error)) return upstream(STARTING_OR_STOPPING)
   if (isInvalidRequestError(error)) {
