@@ -28,4 +28,9 @@ describe("the package's toolsets", () => {
     const stray = PROJECT.defaultToolsets.filter((name) => !PROJECT.toolsets.includes(name))
     expect(stray).toEqual([])
   })
+
+  test("the instruction toolset is opt-in", () => {
+    expect(PROJECT.toolsets).toContain("instruction")
+    expect(PROJECT.defaultToolsets).not.toContain("instruction")
+  })
 })
