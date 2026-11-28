@@ -22,9 +22,9 @@ export const PROJECT = {
   /** Every setting's environment variable is `<envPrefix>_<SETTING>`. */
   envPrefix: "OPENCODE_TOOLS",
   /** The toolsets, in the order `all` lists them. */
-  toolsets: ["service"] as readonly string[],
+  toolsets: ["service", "run"] as readonly string[],
   /** The toolsets on when a setting names none. */
-  defaultToolsets: ["service"] as readonly string[],
+  defaultToolsets: ["service", "run"] as readonly string[],
   /** The package's own settings, which the tools themselves read: each snake_case name and its type, with bounds when it needs them. */
   options: {
     roles: "json",
