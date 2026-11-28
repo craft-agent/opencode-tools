@@ -13,12 +13,8 @@ import type { CallOf, ServiceReadInput, ServiceReadOutput } from "./schemas"
 
 const GIT = "git"
 
-/** The role `args` names, which must be one of the configured roles: `invalid_argument` listing them otherwise. */
-export function configuredRole(
-  args: ServiceReadInput,
-  ctx: Pick<ToolContext, "options">,
-): { name: string; role: Role } {
-  const name = requireArgument(args, "role")
+/** The role called `name`, which must be one of the configured roles: `invalid_argument` listing them otherwise. */
+export function roleNamed(name: string, ctx: Pick<ToolContext, "options">): { name: string; role: Role } {
   const roles = rolesOf(ctx.options)
   const role = roles[name]
   if (role === undefined) {
@@ -28,6 +24,14 @@ export function configuredRole(
     )
   }
   return { name, role }
+}
+
+/** The role `args` names: `roleNamed` of its required `role` argument. */
+export function configuredRole(
+  args: ServiceReadInput,
+  ctx: Pick<ToolContext, "options">,
+): { name: string; role: Role } {
+  return roleNamed(requireArgument(args, "role"), ctx)
 }
 
 /**

@@ -22,7 +22,8 @@ export const MAX_ID = 200
 /** The most characters the entries of one list take as JSON. */
 export const MAX_LIST_CHARS = 20_000
 
-const MAX_ROLE_NAME = 64
+/** The most characters of a `role` argument. */
+export const MAX_ROLE_NAME = 64
 
 /** What `ready` can find wrong, in the order it checks. */
 export const FINDING_CODES = [
