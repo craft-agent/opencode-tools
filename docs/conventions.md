@@ -1002,6 +1002,11 @@ ruleset. Every agent's rules start by allowing everything.
   approval would reopen what it denies. Such a request is told by the
   session's rules: the last one that matches it is an ask. A request to work
   outside the worktree is the exception, since every run asks there.
+- **The tools match a rule as the service does, and only to withhold an
+  approval.** The matcher is a copy of the service's, which a later version
+  of OpenCode can leave behind. It never grants anything: where it is wrong,
+  a request that should only be rejected can be approved, by a caller who
+  still reads its text and a person who is still asked.
 - **A request whose text an approval's prompt cannot show whole can only be
   rejected**: one over the prompt's 2000 characters. The approvals of one
   call share that limit. A person can still answer such a request in
