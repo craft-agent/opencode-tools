@@ -22,7 +22,17 @@ export {
 } from "./grant"
 export { isWithin } from "./paths"
 export { defaultRuntime, localUrl, runtimeOf, type ServiceEndpoint, type ToolRuntime } from "./runtime"
-export { DEFAULT_ROLES, MAX_ROLES, parseModel, rolesOf, type Policy, type Role, type Roles } from "./role"
+export {
+  DEFAULT_ROLES,
+  MAX_ROLES,
+  VARIANT_DEFAULT,
+  modelText,
+  parseModel,
+  rolesOf,
+  type Policy,
+  type Role,
+  type Roles,
+} from "./role"
 export {
   REQUEST_TIMEOUT_MS,
   SERVICE_COMMAND,

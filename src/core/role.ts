@@ -1,4 +1,5 @@
 import { ToolError } from "./errors"
+import { shown } from "./text"
 import type { ToolOptions } from "./tool"
 
 /** What a run may change. */
@@ -19,35 +20,46 @@ export const DEFAULT_ROLES: Roles = {
 export const MAX_ROLES = 20
 
 const ROLE_NAME_PATTERN = /^[a-z][a-z0-9_]{0,23}$/
-const MAX_SHOWN_LENGTH = 40
 const MAX_NOTE_LENGTH = 2000
 const ROLE_KEYS = ["agent", "policy", "model", "note"]
 const POLICIES: readonly Policy[] = ["read-only", "write"]
 const VARIANT_SEPARATOR = "#"
 const PROVIDER_SEPARATOR = "/"
 
-/** The parts of a model written `<provider>/<model>` with an optional `#<variant>`; `undefined` when the text is not written so. */
+/**
+ * The parts of a model written `<provider>/<model>` with an optional
+ * `#<variant>`; `undefined` when the text is not written so. It splits as
+ * OpenCode does: the provider is what comes before the first `/` (it may hold
+ * a `#`), the model what follows up to the first `#` after that slash, and the
+ * variant everything after that `#`, further `#` included.
+ */
 export function parseModel(text: string): { providerID: string; modelID: string; variant?: string } | undefined {
   const trimmed = text.trim()
   if (/\s/.test(trimmed)) return undefined
-  const hash = trimmed.indexOf(VARIANT_SEPARATOR)
-  const path = hash === -1 ? trimmed : trimmed.slice(0, hash)
-  const variant = hash === -1 ? undefined : trimmed.slice(hash + 1)
-  if (variant !== undefined && (variant === "" || variant.includes(VARIANT_SEPARATOR))) return undefined
-  const slash = path.indexOf(PROVIDER_SEPARATOR)
-  const providerID = slash === -1 ? "" : path.slice(0, slash)
-  const modelID = slash === -1 ? "" : path.slice(slash + 1)
-  if (providerID === "" || modelID === "") return undefined
+  const slash = trimmed.indexOf(PROVIDER_SEPARATOR)
+  if (slash === -1) return undefined
+  const providerID = trimmed.slice(0, slash)
+  const rest = trimmed.slice(slash + 1)
+  const hash = rest.indexOf(VARIANT_SEPARATOR)
+  const modelID = hash === -1 ? rest : rest.slice(0, hash)
+  const variant = hash === -1 ? undefined : rest.slice(hash + 1)
+  if (providerID === "" || modelID === "" || variant === "") return undefined
   return { providerID, modelID, ...(variant !== undefined && { variant }) }
+}
+
+/** The variant that means no variant. */
+export const VARIANT_DEFAULT = "default"
+
+/** A model written `<provider>/<model>`, with `#<variant>` when it has a variant that is not `default`: the inverse of `parseModel`. */
+export function modelText(ref: { providerID: string; id: string; variant?: string }): string {
+  const path = `${ref.providerID}${PROVIDER_SEPARATOR}${ref.id}`
+  return ref.variant === undefined || ref.variant === VARIANT_DEFAULT
+    ? path
+    : `${path}${VARIANT_SEPARATOR}${ref.variant}`
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
-}
-
-/** The text cut to a short length and quoted with its control characters escaped, so it is safe in a log. */
-function shown(text: string): string {
-  return JSON.stringify(text.slice(0, MAX_SHOWN_LENGTH))
 }
 
 function invalid(message: string): ToolError {

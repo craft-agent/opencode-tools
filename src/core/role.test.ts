@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { isToolError } from "./errors"
-import { DEFAULT_ROLES, MAX_ROLES, parseModel, rolesOf } from "./role"
+import { DEFAULT_ROLES, MAX_ROLES, modelText, parseModel, rolesOf } from "./role"
 import type { ToolOptions } from "./tool"
 
 const roles = (value: unknown) => ({ roles: value }) as unknown as ToolOptions
@@ -96,7 +96,7 @@ describe("a role's shape", () => {
     expect(one({ agent: "a", policy })).toBe('Role "r" needs a policy of "read-only" or "write".')
   })
 
-  test.each(["a", "/b", "a/", "a/b#", "a/b#x#y", "a /b", "", 1, null])("refuses the model %j", (model) => {
+  test.each(["a", "/b", "a/", "a/b#", "acme/#high", "a /b", "", 1, null])("refuses the model %j", (model) => {
     expect(one({ ...valid, model })).toBe(
       'Role "r" has a model that is not written <provider>/<model> or <provider>/<model>#<variant>.',
     )
@@ -188,7 +188,39 @@ describe("parseModel", () => {
     })
   })
 
-  test.each(["a", "/b", "a/", "a/b#", "a/b#x#y", "a /b", "", "  ", "#v", "a/b #v"])("refuses %j", (text) => {
-    expect(parseModel(text)).toBeUndefined()
+  test("splits as OpenCode does: at the first slash, then at the first # after it", () => {
+    expect(parseModel("team#blue/model")).toEqual({ providerID: "team#blue", modelID: "model" })
+    expect(parseModel("acme/group/model-1#high")).toEqual({
+      providerID: "acme",
+      modelID: "group/model-1",
+      variant: "high",
+    })
+    expect(parseModel("acme/model-1#a#b")).toEqual({ providerID: "acme", modelID: "model-1", variant: "a#b" })
+    expect(parseModel("team#blue/model#v")).toEqual({ providerID: "team#blue", modelID: "model", variant: "v" })
+  })
+
+  test.each(["a", "/b", "/model", "a/", "a/b#", "acme/#high", "acme/model-1#", "a /b", "", "  ", "#v", "a/b #v"])(
+    "refuses %j",
+    (text) => {
+      expect(parseModel(text)).toBeUndefined()
+    },
+  )
+})
+
+describe("modelText", () => {
+  test("writes the provider and the model, with a variant when it has one", () => {
+    expect(modelText({ providerID: "acme", id: "model-1" })).toBe("acme/model-1")
+    expect(modelText({ providerID: "acme", id: "model-1", variant: "high" })).toBe("acme/model-1#high")
+  })
+
+  test("leaves out the variant `default`, which means none", () => {
+    expect(modelText({ providerID: "acme", id: "model-1", variant: "default" })).toBe("acme/model-1")
+  })
+
+  test("is the inverse of parseModel", () => {
+    for (const text of ["acme/model-1", "acme/model-1#high", "a/b/c#x", "team#blue/model#a#b"]) {
+      const parsed = parseModel(text)!
+      expect(modelText({ providerID: parsed.providerID, id: parsed.modelID, variant: parsed.variant })).toBe(text)
+    }
   })
 })
