@@ -51,7 +51,7 @@ export const opencodeRequestRead = defineTool({
     "`method` `list` lists them for the run's `session`, the run's own first, each with its text; `get` reads the one named by `request` with its patches. " +
     "`opencode_run_read` lists the runs and names what each waits on. " +
     "A permission request has an `action`, its `resources`, the `tool` that asked and its `step`: rejecting one request rejects every other request of its step. " +
-    "`text` is what an approval lets run: the whole command of a shell call, another call's arguments as JSON, or, where the call cannot be read, the resources one to a line. An approval must repeat `text` exactly. " +
+    "`text` is what an approval lets run: the whole command of a shell call, another call's arguments as JSON, or, where the call cannot be read, the resources one to a line. An approval (`opencode_request_reply`) must repeat `text` exactly. " +
     "`resources` of a shell call are only its simple commands, cut out of the command. " +
     `\`text\` is cut to ${MAX_LISTED_TEXT} characters in \`list\` and ${MAX_RESULT} in \`get\`, and \`text_truncated\` says so; in \`get\` the text of a request an approval can show (${MAX_APPROVAL_TEXT} characters at most) is never cut. ` +
     `A \`list\` entry of more than ${MAX_ENTRY_CHARS} characters is listed in \`brief\`, without its text, resources, files or fields, and \`get\` reads it whole. ` +

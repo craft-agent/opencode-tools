@@ -62,7 +62,7 @@ describe("the spec", () => {
       "the whole command of a shell call",
       "another call's arguments as JSON",
       "the resources one to a line",
-      "An approval must repeat `text` exactly",
+      "An approval (`opencode_request_reply`) must repeat `text` exactly",
       "`resources` of a shell call are only its simple commands",
       "`step`",
       "rejecting one request rejects every other request of its step",
@@ -90,9 +90,9 @@ describe("the spec", () => {
     }
   })
 
-  test("names no other tool than opencode_run_read", () => {
+  test("names no other tool than opencode_run_read and the one that answers", () => {
     const named = opencodeRequestRead.description.match(/opencode_[a-z_]+/g) ?? []
-    expect(new Set(named)).toEqual(new Set(["opencode_run_read"]))
+    expect(new Set(named)).toEqual(new Set(["opencode_run_read", "opencode_request_reply"]))
   })
 
   test("is named by opencode_run_read, which says it reads what a run waits on whole", () => {
