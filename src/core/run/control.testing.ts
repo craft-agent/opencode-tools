@@ -1,11 +1,15 @@
 /**
- * Test support for the tests of `opencode_run_steer`: a run whose turn is in
- * flight, the tool as the entry points call it, and a way to change the fake
- * service between two requests of one call. Imported by tests only; it uses no test
+ * Test support for the tests of `opencode_run_steer` and `opencode_run_interrupt`:
+ * a run whose turn is in flight, the two tools as the entry points call them,
+ * messages that wait in a session's inbox, and a way to change the fake service
+ * between two requests of one call. Imported by tests only; it uses no test
  * runner's API.
  */
+import type { SessionInboxUser } from "@opencode/client"
 import { fakeChild, type FakeRuntime, type FakeService, type FakeSession } from "../service/testing"
 import { invoke, type ToolContext } from "../tool"
+import type { InterruptOutput } from "./interrupt.schemas"
+import { opencodeRunInterrupt } from "./interrupt.tool"
 import { boundRun, runSetup, type RunSetup } from "./read.testing"
 import type { SteerOutput } from "./steer.schemas"
 import { opencodeRunSteer } from "./steer.tool"
@@ -27,6 +31,11 @@ export function steerTo(message: string, ctx: ToolContext, session = RUN): Promi
   return invoke(opencodeRunSteer, { session, message }, ctx)
 }
 
+/** Calls `opencode_run_interrupt` as the entry points do, for the run's session unless another is given. */
+export function interruptRun(ctx: ToolContext, session = RUN): Promise<InterruptOutput> {
+  return invoke(opencodeRunInterrupt, { session }, ctx)
+}
+
 /**
  * Ids of sessions a call is refused as not found: another caller's run, a
  * person's own session, a subagent of the run, and one the service lacks.
@@ -42,6 +51,25 @@ export function writesOf(service: FakeService): string[] {
   return service.requests
     .filter((request) => request.method !== "GET")
     .map((request) => `${request.method} ${decodeURIComponent(request.path)}`)
+}
+
+/** Puts a message of the caller in the session's inbox as the service holds one it has not read. */
+export function unreadMessage(
+  service: FakeService,
+  sessionID: string,
+  id: string,
+  delivery: SessionInboxUser["delivery"] = "steer",
+): SessionInboxUser {
+  const item: SessionInboxUser = {
+    id,
+    sessionID,
+    time: { created: service.clock.now },
+    type: "user",
+    payload: { text: `Message ${id}` },
+    delivery,
+  }
+  service.state.sessions.find((session) => session.id === sessionID)!.inbox.push(item)
+  return item
 }
 
 /**
