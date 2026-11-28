@@ -1,6 +1,7 @@
 import type { ToolSpec } from "./core"
 import { opencodeRequestRead } from "./core/request/read.tool"
 import { opencodeRequestReply } from "./core/request/reply.tool"
+import { opencodeRunFork } from "./core/run/fork.tool"
 import { opencodeRunRead } from "./core/run/read.tool"
 import { opencodeRunInterrupt } from "./core/run/interrupt.tool"
 import { opencodeRunStart, opencodeRunStartWrite } from "./core/run/start.tool"
@@ -15,6 +16,7 @@ export const ALL_TOOLS: ToolSpec[] = [
   opencodeRunStartWrite,
   opencodeRunSteer,
   opencodeRunInterrupt,
+  opencodeRunFork,
   opencodeRequestRead,
   opencodeRequestReply,
 ]
