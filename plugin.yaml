@@ -8,6 +8,8 @@ provides_tools:
   - opencode_grant_read
   - opencode_grant_revoke
   - opencode_instruction_read
+  - opencode_instruction_remove
+  - opencode_instruction_set
   - opencode_request_read
   - opencode_request_reply
   - opencode_run_fork
