@@ -675,6 +675,14 @@ The settings, messages, README, skills and code use one vocabulary:
 - **Every request has a time limit of ten seconds and ends with the call's
   abort signal.** The client has no limit of its own. The limit covers the
   whole request, so a tool that reads a stream sets its own.
+- **A call ends within `wait_seconds` of its start**, whatever it had to do
+  first. Starting a missing service, loading a directory, each request and a
+  wait all draw on that one limit, and keep their own limits under it. A
+  harness that ends a tool call after a minute then never cuts one off, where
+  a start of the service, a load and a slow request once added up to more. A
+  call that runs out fails as `upstream_error` and says what it was waiting
+  for. The client's own search for the service, two seconds at most, is the
+  one step the limit cannot end.
 - **A failure maps to the codes above**: a missing session to `not_found`; a
   request the service calls invalid to `invalid_argument`; a refused or
   timed-out connection, a service that is starting or stopping, a status the
@@ -746,7 +754,7 @@ The settings, messages, README, skills and code use one vocabulary:
 | Operation                                | Class     | Why                                                                       |
 | ---------------------------------------- | --------- | ------------------------------------------------------------------------- |
 | Every domain's read, waiting included    | read      | changes nothing                                                           |
-| Starting or continuing a read-only run   | add       | adds a session or a turn; its ruleset denies every edit                   |
+| Starting or continuing a read-only run   | add       | adds a session or a turn; its ruleset denies the edit tools               |
 | Steering a turn                          | add       | adds a message to a turn that is already running                          |
 | Forking a session                        | add       | adds a session; the one it copies stays as it is                          |
 | Starting or continuing a write run       | overwrite | the run changes files in its worktree                                     |
@@ -767,7 +775,10 @@ The settings, messages, README, skills and code use one vocabulary:
 - **An answer's prompt shows what it approves.** Its text is the whole command
   or tool call of each request, never a first line: in a compound command the
   part that needs approval is often the last.
-- **A grant can bound a start by role**, and a brief by its length.
+- **A grant can bound a start by role**, and a brief by its length in
+  characters. The role is a bound of the `prefix` kind: a role's name cannot
+  hold the separator, so the bound matches it exactly, and the contract needs
+  no kind whose values a person's configuration would have to fill.
 
 ### The caller
 
@@ -808,8 +819,11 @@ The settings, messages, README, skills and code use one vocabulary:
 
 - **The session metadata key is `opencode-tools`**, the package's name, so it
   cannot collide with another plugin's key and says whose it is. It holds `v`
-  (1), `caller`, `role`, `repository` and `branch`; a domain that binds more
-  adds its fields here first.
+  (1), `caller`, `role`, `repository` and `branch`, and `starting` while a
+  start sets the session up: the time and a token of that call. A domain that
+  binds more adds its fields here first. A session's other metadata is kept:
+  the service replaces metadata as a whole, so a tool writes back what it
+  read with its own key changed.
 - **An instruction entry the package owns is `opencode-tools.<name>`.**
   `opencode-tools.note` is the operating note, which a caller can read and
   can neither set nor remove.
@@ -833,22 +847,107 @@ The settings, messages, README, skills and code use one vocabulary:
   role would fail at the first run instead, far from the mistake.
 - **Code keys on the policy, never on a role's or an agent's name.**
 
+### A run's worktree
+
+- **A run starts in the top level of a Git worktree.** A subdirectory is
+  refused: the ruleset tells inside from outside by the session's directory,
+  and the binding names the worktree.
+- **The repository and the branch are read with git**, through the runner,
+  with git's prompts off. The repository is the common directory a checkout
+  and its linked worktrees share. The service knows a branch too, but late
+  for a directory it has just opened, and a binding made from a branch that
+  had not arrived would refuse the next turn. `ready` keeps asking the
+  service: it reports what the service sees.
+- **A detached HEAD is a worktree with no branch**, and is bound as that.
+- **A session that has left its repository or its branch is not continued.**
+  An agent can move its session with no permission asked, so both are read
+  again at every start. A read runs no git: it shows where the session is.
+
+### Starting a run
+
+- **A session holds its agent, its model and its ruleset; a prompt carries
+  none of them.** So a start sets them on the session and reads the session
+  back before any prompt: the agent, the model, the ruleset, the binding and
+  the directory. On a difference nothing is sent.
+- **A start resolves its role with the function `ready` uses, before it
+  creates a session.** The service checks an agent, a model and a variant
+  only when the turn runs, where a mistake shows as a failed turn; and a
+  `ready` that resolved otherwise would be a promise the start does not keep.
+- **A continued session is set up again.** Its agent, its ruleset and its
+  binding are sent with every start, so a role can change between turns: a
+  session that planned can go on to build, through the write tool. Its model
+  becomes the role's when the role names one and stays otherwise, since the
+  service may have moved the session to another.
+- **A start refuses a session that is running.** A prompt to one is never
+  refused by the service, and even a queued one joins the turn in flight.
+  Adding to a running turn is steering, a tool of its own.
+- **The brief is sent queued, with an id the tool makes.** The service takes
+  a prompt of the same id once.
+- **A start does not wait for its turn.** It returns once the prompt is
+  admitted, with the run's state then; waiting is a read.
+- **Two starts in one worktree are told apart by the service, with no lock
+  file.** A start marks its session's binding, then looks at the worktree's
+  sessions; where it finds another's mark it sends nothing, takes its own
+  mark back and is refused. Each looks after it has marked, so of two starts
+  at once at least one sees the other; both may be refused, never both let
+  through. A mark counts for a minute, and no longer once its session has
+  run since. A lock on disk would be a record beside the service, and would
+  not hold between two harnesses. Two continues of one session at the same
+  instant are the case this cannot always tell apart, since the second mark
+  replaces the first.
+- **A write run is not started while another session runs in its worktree**,
+  whoever it belongs to. Read-only runs may share one.
+
 ### The ruleset
 
-OpenCode evaluates the global rules, then the agent's, then the session's, and
-the last match wins; a subagent's session copies its parent's ruleset.
+OpenCode evaluates the agent's rules, which hold the global ones, then the
+session's, and the last match wins; a subagent's session copies its parent's
+ruleset. Every agent's rules start by allowing everything.
 
-- **A ruleset holds denies, asks and narrow allows.** A broad allow would
-  reopen what a subagent's own rules deny. The one broad allow is a write
-  run's edits inside its worktree, placed before every edit deny.
-- **A read-only run is denied every edit and every git command that writes.**
-  Denied, not asked: an ask would reopen what a read-only agent denies itself.
-- **A write run asks before it rewrites history, moves a branch or runs a
-  command that downloads and runs a package.**
+- **A ruleset holds denies, asks and narrow allows, and no broad allow.** A
+  session's rules come after its agent's and reach every subagent, so a broad
+  allow would reopen what an agent or a subagent denies itself. What a run
+  may do is its agent's to say; the ruleset only takes away. An earlier form
+  of this rule allowed a write run's edits inside its worktree: every agent
+  already starts from allowing, so that allow added nothing to an agent that
+  edits, and reopened edits for a subagent that does not.
+- **The rules are text the service matches, not a sandbox.** A shell command
+  is matched as it is written, one simple command at a time: a variable
+  before it or a wrapper around it stays in the text, so a pattern finds the
+  command anywhere in it. Extra spaces, a quote inside a word and a script
+  that runs the command are not found. A file rule covers the file tools
+  only: a shell command reads and writes past it, and a search reads past a
+  rule on reading. So the rules stop the plain forms and the operating note
+  says the rest. Nothing here claims a run cannot get round them, as with the
+  binding.
+- **A read-only run is denied the edit tools and the git commands that
+  write.** Denied, not asked: an ask would reopen what a read-only agent
+  denies itself. Its shell stays, as under OpenCode's own `plan` agent: a run
+  that reviews or plans runs tests and reads history, and a command can
+  still write a file.
+- **A write run is denied every edit outside its worktree**, and asks before
+  it rewrites history, moves a branch or runs a command that downloads and
+  runs a package. An approval a person saved in OpenCode settles such an ask
+  without the caller.
+- **Outside its worktree a run asks.** The exceptions are narrow allows: the
+  directories the service itself sends a run to, for a command's output and
+  for scratch files, and a read-only run's `read_roots`.
 - **Every run is denied**: reading secret files, editing a repository's or
   the person's git configuration and hooks, pushing from a shell, publishing
-  a package, discarding work by force, and the package's own tools. These come
-  last, so nothing reopens them.
+  a package, discarding work by force, the package's own tools, and moving
+  its own session. These come last, so nothing reopens them.
+- **A git command that names another repository or sets configuration on its
+  command line is denied** (`-C`, `--git-dir`, `--work-tree`, `-c`). The
+  first three act outside the worktree the run is bound to, and the last is
+  configuration by another road. It also keeps the patterns exact: the only
+  options looked for before a subcommand are the ones that change nothing.
+- **A run cannot move its session.** OpenCode gives every agent a tool for
+  that and asks no permission for it; a rule that denies the tool for every
+  resource hides it from the model. A session that left its worktree would
+  no longer be the one its binding and its ruleset describe.
+- **A command the service cannot parse is refused** once any shell command
+  is denied, with the reason. That is the service's own rule, and the safe
+  side.
 - **A shell push is denied, not asked.** The request would show a command,
   not the commits, the branch or whether it forces. Pushing is the caller's
   act, or a tool a consumer's `rules` open.
@@ -856,10 +955,19 @@ the last match wins; a subagent's session copies its parent's ruleset.
   after the package's rules and before what every run is denied. They tighten
   a run or open another package's tools, and never reopen those denies. The
   package itself names no other package's tool and no subagent.
+- **A path is written as given and as resolved**, since the service matches
+  a path as text. A wildcard matches the whole value and `*` crosses `/`, so
+  a secret file's pattern is spelled to match one at the top level too. A
+  file inside the worktree is matched by its path from the top, one outside
+  by its absolute path.
+- **The package's own tools are denied under any server's name**: a tool of
+  an MCP server is named after the server, which a person chooses.
 - **Paths outside a worktree are the person's**: `read_roots` (directories a
-  run may read), `output_roots` (where a run's output directory may sit) and
-  `protected_dirs` (checkouts no write run may start in). A read root that
-  holds the home directory is refused, since credentials live there.
+  read-only run may read), `output_roots` (where a run's output directory may
+  sit) and `protected_dirs` (checkouts no write run may start in). A read
+  root that holds the home directory is refused, since credentials live
+  there. A write run gets no read roots: the shell's directory is checked
+  under the same rule, so a root would let it work there.
 
 ### Answers
 
@@ -889,12 +997,40 @@ the last match wins; a subagent's session copies its parent's ruleset.
   package keeps no record of a run; a second record would disagree with the
   service.
 - **A turn ends at its own idle message**, which carries its outcome, never at
-  a session-level field or an exit status.
-- **Nothing is sent again after `unknown`.** A brief whose admission could not
-  be confirmed may have been taken.
-- **A wait returns at `wait_seconds`, with `timed_out`.** The default is 50,
-  under a harness that ends a tool call after a minute; the most is 3300. The
-  Hermes plugin's limit on a call follows the setting.
+  an exit status or at what the session last said. The service writes the
+  session's own outcome and idle time with that message, and a run's state is
+  read from those: a list of a caller's runs would otherwise read every
+  session's messages. A turn is everything since the idle message before it,
+  briefs added on the way included.
+- **The result of a turn is the text of its newest reply that ended without
+  an error**, which is how the service itself reads a subagent's result.
+- **A run is its session and its subagents' sessions.** A subagent is a child
+  session that runs in the background of its parent's turn, and its requests
+  are listed under its own id. So a run whose own turn has ended is still
+  `running` while a child is active, and `waiting` while one is paused.
+- **What runs is read from the service's active set, before any outcome.** A
+  session keeps its previous turn's outcome while the next one runs, and
+  stays active for a moment after its end is written.
+- **A turn that stopped without its end is `interrupted`**, and the result
+  says that OpenCode takes it up again when the service next starts. A
+  request rejected without a message leaves a turn so, and so does a service
+  that stopped.
+- **A turn that has just begun or just ended can show neither for a moment.**
+  For 30 seconds after its newest message it counts as `running`.
+- **`unknown` is a brief whose admission could not be confirmed, or a session
+  that holds no turn.** Nothing is sent again after it: the brief may have
+  been taken.
+- **A wait asks the service at intervals.** The service's own blocking route
+  has no time limit and does not return when a run pauses on a request, and
+  its event stream drops what a slow reader misses.
+- **A wait hands back a run that keeps retrying its provider**, as `running`
+  with the retry: at the third attempt, and at once on a limit or a refused
+  login, which more attempts do not cure.
+- **A wait returns when the call's time ends, with `timed_out`.**
+  `wait_seconds` is the limit of every call, counted from its start: 50 by
+  default, under a harness that ends a tool call after a minute, and 3300 at
+  most. The Hermes plugin ends a call 30 seconds after it, so the tool's own
+  answer arrives first.
 - **A result has a size limit and says when it was cut.** A list keeps a
   number of entries and a size as JSON, whichever ends first, and counts
   what there was. A name or a description is cut; an id never is, since a
@@ -927,7 +1063,8 @@ the last match wins; a subagent's session copies its parent's ruleset.
 - **Tests run against one fake service**, typed by the client's own types, so
   a reply whose shape drifted fails the type check. It is a `fetch` given to
   the client, in the test's own process, and holds what the units so far
-  read; a unit adds the routes it needs.
+  read; a unit adds the routes it needs. It records the body of each request,
+  so a test checks what a tool sent and not only where.
 - **The fake answers as the service was seen to answer**, by default: a
   directory it has not been asked about is still loading for its first
   requests, and its branch comes after the rest. A tool that reads without

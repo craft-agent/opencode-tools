@@ -7,6 +7,9 @@ provides_tools:
   - opencode_grant_create
   - opencode_grant_read
   - opencode_grant_revoke
+  - opencode_run_read
+  - opencode_run_start
+  - opencode_run_start_write
   - opencode_service_read
 provides_hooks:
   - pre_tool_call
@@ -31,6 +34,21 @@ config_schema:
   roles:
     type: dict
     description: 'The roles a run can start under, by name: each an agent and a policy ("read-only" or "write"), with an optional model and note. Defaults to plan and build, OpenCode''s own agents.'
+  wait_seconds:
+    type: int
+    description: How many seconds one call may take as a whole, a wait included; 1 to 3300. Defaults to 50.
+  note:
+    type: str
+    description: Text added to what every run is told.
+  rules:
+    type: dict
+    description: 'Permission rules of your own for a run, by policy ("read-only" or "write"): each a list of rules with an action, a resource and an effect (allow, deny or ask).'
+  read_roots:
+    type: list
+    description: Directories a read-only run may read outside its worktree, as absolute paths.
+  protected_dirs:
+    type: list
+    description: Checkouts no write run may start in, as absolute paths.
   language:
     description: The language of the approval card, such as ja. Defaults to Hermes's display language, else English.
   require_plugins:

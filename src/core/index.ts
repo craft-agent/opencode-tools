@@ -1,3 +1,12 @@
+export {
+  DEFAULT_WAIT_SECONDS,
+  MAX_WAIT_SECONDS,
+  MIN_WAIT_SECONDS,
+  WAIT_SECONDS_OPTION,
+  startDeadline,
+  waitSecondsOf,
+  type Deadline,
+} from "./deadline"
 export { ToolError, isAbortError, isToolError, type ErrorCode, type ErrorDetails, type JsonValue } from "./errors"
 export { abortError, exec, startDetached, type ExecOptions, type ExecResult, type StartOptions } from "./exec"
 export {
@@ -35,6 +44,30 @@ export {
   type Roles,
 } from "./role"
 export {
+  BINDING_KEY,
+  BINDING_VERSION,
+  STARTING_MS,
+  bindingOf,
+  isStarting,
+  sameBinding,
+  unmarked,
+  withBinding,
+  type Binding,
+  type Starting,
+} from "./run/binding"
+export { GIT_TIMEOUT_MS, runGit } from "./run/git"
+export { NOTE_KEY, noteFor } from "./run/note"
+export {
+  MAX_CONSUMER_RULES,
+  MAX_RULE_TEXT,
+  MAX_RUN_NOTE_LENGTH,
+  consumerRulesOf,
+  noteOf,
+  protectedDirsOf,
+  readRootsOf,
+} from "./run/options"
+export { readWorktree, refuseProtected, type Worktree } from "./run/worktree"
+export {
   REQUEST_TIMEOUT_MS,
   SERVICE_COMMAND,
   START_POLL_MS,
@@ -46,6 +79,7 @@ export {
 } from "./service/connect"
 export { SERVICE_ENV, serviceEnv } from "./service/env"
 export { serviceError, type ServiceErrorOptions } from "./service/errors"
+export { resolveRole, type ModelRef, type ResolvedRole, type RoleFinding } from "./service/resolve"
 export { MIN_SERVICE_VERSION, checkServiceVersion } from "./service/version"
 export { ANY_TARGET, writeTargets } from "./targets"
 export {

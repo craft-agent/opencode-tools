@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from collections.abc import Mapping
 from typing import Any
 
@@ -60,6 +61,32 @@ def emoji_setting(ctx: PluginContext, defaults: Mapping[str, str] | None = None)
     if isinstance(value, dict):
         merged.update({key: item for key, item in value.items() if isinstance(key, str) and isinstance(item, str)})
     return merged
+
+
+def _finite_number(value: Any) -> bool:
+    """Whether ``value`` is a finite ``int`` or ``float`` and no ``bool``."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def wait_seconds_setting(ctx: PluginContext, environ: Mapping[str, str] | None = None) -> int | float:
+    """The ``wait_seconds`` the command line will use: the setting, else its variable, else the default.
+
+    The setting counts when it is a number, the variable (of ``environ``, the process's by default,
+    which the command line inherits) when it parses as a finite number. A value of the wrong type or
+    out of bounds is for the command line to refuse; this never raises and falls back to the default.
+    """
+    value = ctx.get_config("wait_seconds")
+    if _finite_number(value):
+        return value
+    text = (os.environ if environ is None else environ).get(f"{project.ENV_PREFIX}_WAIT_SECONDS")
+    if text is not None:
+        try:
+            parsed = float(text)
+        except ValueError:
+            return project.DEFAULT_WAIT_SECONDS
+        if math.isfinite(parsed):
+            return int(parsed) if parsed.is_integer() else parsed
+    return project.DEFAULT_WAIT_SECONDS
 
 
 def _option_flag(name: str, declaration: str | dict[str, object], value: Any) -> list[str]:

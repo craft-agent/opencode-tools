@@ -5,6 +5,7 @@ import {
   isSessionNotFoundError,
   isUnauthorizedError,
 } from "@opencode/client"
+import type { Deadline } from "../deadline"
 import { ToolError } from "../errors"
 import { abortError } from "../exec"
 import { UNSAFE_CHARACTERS } from "../text"
@@ -13,10 +14,14 @@ import { UNSAFE_CHARACTERS } from "../text"
 export const REQUEST_TIMEOUT_MS = 10_000
 
 const MS_PER_SECOND = 1000
+/** What a call has left, at most, when a request's timeout is the call's own end rather than the request's. */
+const CALL_ENDING_MS = 100
 /** The most characters of a service's own text that a tool's message carries. */
 const MAX_TEXT_LENGTH = 300
 /** What a secret in a service's own text becomes. */
 const REDACTED = "[redacted]"
+/** What a session that does not exist, or that is not the caller's to see, is told. */
+export const SESSION_NOT_FOUND = "The session does not exist."
 const NOT_FOUND_SUFFIX = "NotFoundError"
 const CREDENTIALS_REFUSED = "The OpenCode service refused the tools' credentials."
 const STARTING_OR_STOPPING = "The OpenCode service is starting or stopping; try again in a moment."
@@ -31,6 +36,8 @@ export type ServiceErrorOptions = {
   signal?: AbortSignal
   /** The time limit the request had, for the message that reports it; defaults to `REQUEST_TIMEOUT_MS`. */
   timeoutMs?: number
+  /** The call's time: a request that timed out with no more than `CALL_ENDING_MS` of it left failed because the call ran out, and says so. */
+  deadline?: Deadline
   /**
    * Texts that must not reach a message, such as the service's address and
    * credentials: wherever the service's own text is forwarded, each non-empty
@@ -87,14 +94,15 @@ function statusFailure(cause: unknown): ToolError {
   )
 }
 
-function clientFailure(error: ClientError, timeoutMs: number): ToolError {
+function clientFailure(error: ClientError, timeoutMs: number, deadline: Deadline | undefined): ToolError {
   switch (error.reason) {
     case "Transport":
-      return upstream(
-        propertyOf(error.cause, "name") === "TimeoutError"
-          ? `The OpenCode service did not answer within ${timeoutMs / MS_PER_SECOND} seconds.`
-          : "The OpenCode service could not be reached.",
-      )
+      if (propertyOf(error.cause, "name") !== "TimeoutError")
+        return upstream("The OpenCode service could not be reached.")
+      // A request cut short by the call's own time says that, not that the service was slow.
+      return deadline !== undefined && deadline.remaining() <= CALL_ENDING_MS
+        ? deadline.ended("the OpenCode service to answer")
+        : upstream(`The OpenCode service did not answer within ${timeoutMs / MS_PER_SECOND} seconds.`)
     case "UnexpectedStatus":
       return statusFailure(error.cause)
     case "UnsupportedContentType":
@@ -106,7 +114,7 @@ function clientFailure(error: ClientError, timeoutMs: number): ToolError {
 
 /** The failure of an error the route declares, which the client throws as a plain `Error` named by the body's `_tag`; `undefined` for any other. */
 function declaredFailure(error: Error, secrets: readonly string[]): ToolError | undefined {
-  if (isSessionNotFoundError(error)) return new ToolError("not_found", "The session does not exist.")
+  if (isSessionNotFoundError(error)) return new ToolError("not_found", SESSION_NOT_FOUND)
   if (isUnauthorizedError(error)) return upstream(CREDENTIALS_REFUSED)
   if (isServiceUnavailableError(error)) return upstream(STARTING_OR_STOPPING)
   if (isInvalidRequestError(error)) {
@@ -145,7 +153,9 @@ function untaggedFailure(error: Error, secrets: readonly string[]): ToolError | 
 export function serviceError(error: unknown, options: ServiceErrorOptions = {}): unknown {
   if (error instanceof ToolError) return error
   if (options.signal?.aborted) return abortError(options.signal)
-  if (error instanceof ClientError) return clientFailure(error, options.timeoutMs ?? REQUEST_TIMEOUT_MS)
+  if (error instanceof ClientError) {
+    return clientFailure(error, options.timeoutMs ?? REQUEST_TIMEOUT_MS, options.deadline)
+  }
   if (error instanceof Error) {
     const secrets = options.redact ?? []
     return declaredFailure(error, secrets) ?? untaggedFailure(error, secrets) ?? error

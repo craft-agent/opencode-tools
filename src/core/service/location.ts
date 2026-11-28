@@ -21,7 +21,8 @@ const MS_PER_SECOND = 1000
  * plugins in the background: its agents, providers and models are right only
  * once `plugin.list` has entries, which is how OpenCode's own command line
  * waits. Going on with a directory that did not load would answer with an
- * empty result taken for a real one, so past `LOCATION_TIMEOUT_MS` this fails.
+ * empty result taken for a real one, so past `LOCATION_TIMEOUT_MS`, or past
+ * what the call's time has left when that is less, this fails.
  */
 export async function loadLocation(
   service: ServiceConnection,
@@ -29,16 +30,22 @@ export async function loadLocation(
   ctx: Pick<ToolContext, "signal" | "runtime">,
 ): Promise<void> {
   const rt = runtimeOf(ctx)
-  const deadline = rt.now() + LOCATION_TIMEOUT_MS
+  const limitMs = service.deadline.within(LOCATION_TIMEOUT_MS)
+  const endsAt = rt.now() + limitMs
   const location = { location: { directory } }
+  const named = shown(directory, MAX_SHOWN_DIRECTORY)
+  const notLoaded = () =>
+    limitMs === LOCATION_TIMEOUT_MS
+      ? new ToolError(
+          "upstream_error",
+          `The OpenCode service did not finish loading ${named} within ${LOCATION_TIMEOUT_MS / MS_PER_SECOND} seconds; try again.`,
+        )
+      : service.deadline.ended(`the OpenCode service to load ${named}`)
   for (;;) {
+    // A call with nothing left cannot send another request: its time is what ends the wait.
+    if (service.deadline.remaining() <= 0) throw notLoaded()
     if (pluginsOf(await service.client.plugin.list(location)).length > 0) return
-    if (rt.now() >= deadline) {
-      throw new ToolError(
-        "upstream_error",
-        `The OpenCode service did not finish loading ${shown(directory, MAX_SHOWN_DIRECTORY)} within ${LOCATION_TIMEOUT_MS / MS_PER_SECOND} seconds; try again.`,
-      )
-    }
+    if (rt.now() >= endsAt) throw notLoaded()
     await rt.sleep(LOCATION_POLL_MS, ctx.signal)
   }
 }

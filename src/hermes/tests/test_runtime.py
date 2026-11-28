@@ -107,11 +107,10 @@ class ProcessGroupTest(FakeCliCase):
     def run_until_timeout(self, **reply: Any) -> dict[str, Any]:
         self.addCleanup(self.kill_leftovers)
         self.reply("run demo_thing_create", sleep=30, pid_dir=str(self.dir), **reply)
-        handler = self.register().tools["demo_thing_create"]["handler"]
+        with mock.patch.object(tools, "CALL_MARGIN_SECONDS", 0):
+            handler = self.register({"wait_seconds": 0.5}).tools["demo_thing_create"]["handler"]
         started = time.monotonic()
-        with mock.patch.object(tools, "RUN_TIMEOUT_SECONDS", 0.5), mock.patch.object(
-            runtime, "TERMINATE_GRACE_SECONDS", 0.5
-        ):
+        with mock.patch.object(runtime, "TERMINATE_GRACE_SECONDS", 0.5):
             result = json.loads(handler({}))
         self.assertLess(time.monotonic() - started, 10)
         return result

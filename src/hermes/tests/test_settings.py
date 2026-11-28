@@ -57,8 +57,18 @@ class SettingsFlagsTest(unittest.TestCase):
 
 
 class OptionFlagsTest(unittest.TestCase):
-    def test_the_package_declares_the_roles_option(self) -> None:
-        self.assertEqual(project.OPTIONS, {"roles": "json"})
+    def test_the_package_declares_its_options(self) -> None:
+        self.assertEqual(
+            project.OPTIONS,
+            {
+                "roles": "json",
+                "wait_seconds": {"type": "number", "integer": True, "min": 1, "max": 3300},
+                "note": "text",
+                "rules": "json",
+                "read_roots": {"type": "paths", "max": 20},
+                "protected_dirs": {"type": "paths", "max": 50},
+            },
+        )
 
     def test_a_mapping_is_forwarded_as_one_compact_json_argument(self) -> None:
         roles = {"review": {"agent": "plan", "policy": "read-only"}, "lead": {"agent": "build", "policy": "write", "note": "日本語"}}
