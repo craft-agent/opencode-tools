@@ -43,7 +43,20 @@ export {
   type Role,
   type Roles,
 } from "./role"
+export {
+  BINDING_KEY,
+  BINDING_VERSION,
+  STARTING_MS,
+  bindingOf,
+  isStarting,
+  sameBinding,
+  unmarked,
+  withBinding,
+  type Binding,
+  type Starting,
+} from "./run/binding"
 export { GIT_TIMEOUT_MS, runGit } from "./run/git"
+export { NOTE_KEY, noteFor } from "./run/note"
 export {
   MAX_CONSUMER_RULES,
   MAX_RULE_TEXT,
@@ -66,6 +79,7 @@ export {
 } from "./service/connect"
 export { SERVICE_ENV, serviceEnv } from "./service/env"
 export { serviceError, type ServiceErrorOptions } from "./service/errors"
+export { resolveRole, type ModelRef, type ResolvedRole, type RoleFinding } from "./service/resolve"
 export { MIN_SERVICE_VERSION, checkServiceVersion } from "./service/version"
 export { ANY_TARGET, writeTargets } from "./targets"
 export {
