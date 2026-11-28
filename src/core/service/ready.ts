@@ -108,8 +108,9 @@ function resolveModel(
 /**
  * What `vcs.get` says of a directory once it has settled. A directory just
  * loaded answers with no provider for a short while, so it is asked again,
- * every `LOCATION_POLL_MS` and for at most `BRANCH_TIMEOUT_MS`, and what was
- * read last stands after that. A retry that fails, but for the call's own
+ * every `LOCATION_POLL_MS` and for at most `BRANCH_TIMEOUT_MS`, or what the
+ * call's time has left when that is less, and what was read last stands after
+ * that. A retry that fails, but for the call's own
  * abort, ends the retrying and leaves the last reply standing: a failed look
  * must not fail the check. With a provider, there is no retry.
  */
@@ -120,9 +121,9 @@ async function settledVcs(
   ctx: Pick<ToolContext, "signal" | "runtime">,
 ): Promise<VcsEntry> {
   const rt = runtimeOf(ctx)
-  const deadline = rt.now() + BRANCH_TIMEOUT_MS
+  const endsAt = rt.now() + service.deadline.within(BRANCH_TIMEOUT_MS)
   let vcs = first
-  while (!vcs.provider && rt.now() < deadline) {
+  while (!vcs.provider && rt.now() < endsAt) {
     await rt.sleep(LOCATION_POLL_MS, ctx.signal)
     try {
       vcs = vcsOf(await service.client.vcs.get({ location: { directory } }))

@@ -1,4 +1,5 @@
 import { OpenCode, type OpenCodeClient } from "@opencode/client"
+import { startDeadline, type Deadline } from "../deadline"
 import { ToolError } from "../errors"
 import { abortError } from "../exec"
 import { runtimeOf, type ServiceEndpoint, type ToolRuntime } from "../runtime"
@@ -28,11 +29,15 @@ export type ServiceConnection = {
   version: string
   /** True when this call found no service and started one. Two calls made at once may both say so: the service settles which process stays. */
   started: boolean
+  /** The call's time, the one given to `connectService` or else started by it: starting, loading a directory and every request draw on it. */
+  deadline: Deadline
 }
 
-type ConnectContext = Pick<ToolContext, "signal" | "runtime">
+type ConnectContext = Pick<ToolContext, "signal" | "runtime" | "options">
 
 export type ConnectOptions = {
+  /** The call's time when the caller started it before anything else; defaults to one started by `connectService` from the context's options. */
+  deadline?: Deadline
   /** The time limit of every request the client makes; defaults to `REQUEST_TIMEOUT_MS`. It covers the whole request, its body included, so a caller that reads a stream passes its own. */
   requestTimeoutMs?: number
 }
@@ -41,8 +46,14 @@ function checkNotAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw abortError(signal)
 }
 
-async function startService(rt: ToolRuntime, signal: AbortSignal | undefined): Promise<ServiceEndpoint> {
+/** Starts the service and waits for it to register: `START_TIMEOUT_MS` at most, and no longer than the call has. The service is left running when the wait ends. */
+async function startService(
+  rt: ToolRuntime,
+  signal: AbortSignal | undefined,
+  deadline: Deadline,
+): Promise<ServiceEndpoint> {
   const startedAt = rt.now()
+  const limitMs = deadline.within(START_TIMEOUT_MS)
   try {
     await rt.start([...SERVICE_COMMAND], { env: serviceEnv(rt.env) })
   } catch (error) {
@@ -57,14 +68,29 @@ async function startService(rt: ToolRuntime, signal: AbortSignal | undefined): P
     const endpoint = await rt.discover()
     checkNotAborted(signal)
     if (endpoint) return endpoint
-    if (rt.now() >= startedAt + START_TIMEOUT_MS) throw new ToolError("upstream_error", NOT_REGISTERED)
+    if (rt.now() >= startedAt + limitMs) {
+      throw limitMs === START_TIMEOUT_MS
+        ? new ToolError("upstream_error", NOT_REGISTERED)
+        : deadline.ended("the OpenCode service to start")
+    }
   }
 }
 
-/** The `fetch` the client sends with: the runtime's, ended by the call's signal and by the time limit. */
-function limitedFetch(rt: ToolRuntime, signal: AbortSignal | undefined, timeoutMs: number): typeof globalThis.fetch {
+/**
+ * The `fetch` the client sends with: the runtime's, ended by the call's signal
+ * and by the time limit, which is the request's own or what the call has left.
+ * A request made when the call has nothing left is not sent.
+ */
+function limitedFetch(
+  rt: ToolRuntime,
+  signal: AbortSignal | undefined,
+  timeoutMs: number,
+  deadline: Deadline,
+): typeof globalThis.fetch {
   return ((input, init) => {
-    const ends = [AbortSignal.timeout(timeoutMs)]
+    const limitMs = deadline.within(timeoutMs)
+    if (limitMs <= 0) return Promise.reject(new DOMException("The call's time has ended.", "TimeoutError"))
+    const ends = [AbortSignal.timeout(limitMs)]
     if (init?.signal) ends.push(init.signal)
     if (signal) ends.push(signal)
     return rt.fetch(input, { ...init, signal: AbortSignal.any(ends) })
@@ -115,6 +141,7 @@ function mappingFailures<T extends object>(target: T, map: (error: unknown) => u
 
 /** Finds the service, starting a missing one with `serviceEnv`, and checks its version. */
 export async function connectService(ctx: ConnectContext, options: ConnectOptions = {}): Promise<ServiceConnection> {
+  const deadline = options.deadline ?? startDeadline(ctx)
   const rt = runtimeOf(ctx)
   const timeoutMs = options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS
   checkNotAborted(ctx.signal)
@@ -123,23 +150,23 @@ export async function connectService(ctx: ConnectContext, options: ConnectOption
   checkNotAborted(ctx.signal)
   const started = endpoint === undefined
   // Two callers may both start the service: of two services started together the loser exits by itself, so no lock is needed.
-  endpoint ??= await startService(rt, ctx.signal)
+  endpoint ??= await startService(rt, ctx.signal, deadline)
 
   const redact = secretsOf(endpoint)
   const client = mappingFailures(
     OpenCode.make({
       baseUrl: endpoint.url,
       headers: endpoint.headers,
-      fetch: limitedFetch(rt, ctx.signal, timeoutMs),
+      fetch: limitedFetch(rt, ctx.signal, timeoutMs, deadline),
     }),
-    (error) => serviceError(error, { signal: ctx.signal, timeoutMs, redact }),
+    (error) => serviceError(error, { signal: ctx.signal, timeoutMs, deadline, redact }),
   )
   // The reply is JSON the client does not validate.
   const info: unknown = await client.server.info()
   const version = isObject(info) && "version" in info ? info.version : undefined
   if (typeof version !== "string") throw new ToolError("upstream_error", UNREADABLE_REPLY)
   checkServiceVersion(version)
-  return { client, version, started }
+  return { client, version, started, deadline }
 }
 
 /** Connects, then runs `use` with the service. What `use` throws is its own: only the failures of the client's requests are mapped, where they are made. */
