@@ -22,7 +22,7 @@ function invalid(message: string): ToolError {
  * starts no service and sends no request, and returns the role they name: the
  * role must be configured and have the tool's `policy`, the brief must not be
  * blank, and a new session (`directory`) and a continued one (`session`) are
- * not asked for together.
+ * not asked for together, and a fork (`fork`) names the session to copy.
  */
 export function checkStart(args: StartInput, policy: Policy, ctx: Pick<ToolContext, "options">): CheckedRole {
   const checked = roleNamed(args.role, ctx)
@@ -35,5 +35,6 @@ export function checkStart(args: StartInput, policy: Policy, ctx: Pick<ToolConte
   if (args.directory !== undefined && args.session !== undefined) {
     throw invalid("Give directory for a new session, or session to continue one, not both.")
   }
+  if (args.fork === true && args.session === undefined) throw invalid("fork needs session, the session to copy.")
   return checked
 }
