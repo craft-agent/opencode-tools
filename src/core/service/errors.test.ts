@@ -134,11 +134,11 @@ describe("serviceError: errors the route declares", () => {
 
   test("line and paragraph separators, bidirectional controls and the byte order mark become spaces", () => {
     const unsafe = ["\u2028", "\u2029", "\u200e", "\u200f", "\u202a", "\u202b", "\u202c", "\u202d", "\u202e"]
-    const isolates = ["\u2066", "\u2067", "\u2068", "\u2069", "\ufeff"]
+    const isolates = ["\u2066", "\u2067", "\u2068", "\u2069", "\ufeff", "\u061c"]
     const message = [...unsafe, ...isolates].map((character) => `a${character}b`).join("")
     const result = mapped(declared({ _tag: "ConflictError", message })).message
     expect(result).toBe(`The OpenCode service failed: ${"a b".repeat(unsafe.length + isolates.length)}`)
-    expect(result).not.toMatch(/[\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]/)
+    expect(result).not.toMatch(/[\u061c\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]/)
     expect(mapped(declared({ _tag: "ConflictError", message: "a\u2028b\u202ec" })).message).toBe(
       "The OpenCode service failed: a b c",
     )
@@ -205,6 +205,42 @@ describe("serviceError: what it does not know", () => {
   test("a signal that has not aborted changes nothing", () => {
     const error = new TypeError("bug")
     expect(serviceError(error, { signal: new AbortController().signal })).toBe(error)
+  })
+})
+
+describe("serviceError: texts to redact", () => {
+  const redact = ["http://service.test", "service.test", "Basic czNjcmV0", "s3cretpw"]
+
+  test("each is replaced by [redacted] in every text the service's own message is forwarded in, the longest first", () => {
+    const message = "bad http://service.test (service.test) with Basic czNjcmV0 and s3cretpw"
+    const replaced = "bad [redacted] ([redacted]) with [redacted] and [redacted]"
+    expect(mapped(declared({ _tag: "InvalidRequestError", message }), { redact }).message).toBe(
+      `The OpenCode service refused the request: ${replaced}`,
+    )
+    expect(mapped(declared({ _tag: "AgentNotFoundError", message }), { redact }).message).toBe(replaced)
+    expect(mapped(declared({ _tag: "ConflictError", message }), { redact }).message).toBe(
+      `The OpenCode service failed: ${replaced}`,
+    )
+    expect(mapped(new Error(message), { redact }).message).toBe(`The OpenCode service refused the request: ${replaced}`)
+  })
+
+  test("a name that stands for an empty message is redacted too", () => {
+    const name = "Secret-s3cretpwNotFoundError"
+    expect(mapped(Object.assign(new Error(""), { name }), { redact }).message).toBe("Secret-[redacted]NotFoundError")
+  })
+
+  test("is done before the cut", () => {
+    const message = `${"z".repeat(295)} s3cretpw`
+    expect(mapped(new Error(message), { redact }).message).toBe(
+      `The OpenCode service refused the request: ${"z".repeat(295)} [red`,
+    )
+  })
+
+  test("leaves a message without them untouched, and ignores empty entries", () => {
+    const message = "directory must be absolute"
+    expect(mapped(declared({ _tag: "InvalidRequestError", message }), { redact: [...redact, ""] }).message).toBe(
+      `The OpenCode service refused the request: ${message}`,
+    )
   })
 })
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { ToolError } from "../errors"
 import { connectService, withService } from "./connect"
-import { createFakeService, fakeRuntime } from "./testing"
+import { FAKE_ENDPOINT, createFakeService, fakeRuntime } from "./testing"
 
 const JSON_HEADERS = { "content-type": "application/json" }
 
@@ -105,5 +105,35 @@ describe("the client of a connection maps its own failures", () => {
     expect(client.agent).toBe(client.agent)
     expect(client.agent.list).toBe(client.agent.list)
     expect(client.vcs.branch).toBe(client.vcs.branch)
+  })
+})
+
+describe("the client of a connection keeps the service's address and credentials out of the text it forwards", () => {
+  const authorization = `Basic ${Buffer.from("opencode:s3cretpw").toString("base64")}`
+
+  async function connected() {
+    const service = createFakeService()
+    const runtime = fakeRuntime(service)
+    runtime.discover = async () => ({ url: FAKE_ENDPOINT.url, headers: { authorization } })
+    service.failNext("/api/info", new Response(JSON.stringify({ version: "2.4.2" }), { headers: JSON_HEADERS }))
+    return { service, ...(await connectService({ runtime })) }
+  }
+
+  test("an invalid request that quotes the address, the header and the password", async () => {
+    const { service, client } = await connected()
+    const message = `bad ${FAKE_ENDPOINT.url} (service.test) with ${authorization} and s3cretpw`
+    service.failNext("/api/agent", declaredReply({ _tag: "InvalidRequestError", message }, 400))
+    const error = (await client.agent.list().catch((e: unknown) => e)) as ToolError
+    expect(error.code).toBe("invalid_argument")
+    expect(error.message).toBe(
+      "The OpenCode service refused the request: bad [redacted] ([redacted]) with [redacted] and [redacted]",
+    )
+  })
+
+  test("a message without them is untouched", async () => {
+    const { service, client } = await connected()
+    service.failNext("/api/agent", declaredReply({ _tag: "InvalidRequestError", message: "directory is odd" }, 400))
+    const error = (await client.agent.list().catch((e: unknown) => e)) as ToolError
+    expect(error.message).toBe("The OpenCode service refused the request: directory is odd")
   })
 })

@@ -7,6 +7,7 @@ import {
 } from "@opencode/client"
 import { ToolError } from "../errors"
 import { abortError } from "../exec"
+import { UNSAFE_CHARACTERS } from "../text"
 
 /** How long a request to the service may take, in milliseconds. */
 export const REQUEST_TIMEOUT_MS = 10_000
@@ -14,8 +15,8 @@ export const REQUEST_TIMEOUT_MS = 10_000
 const MS_PER_SECOND = 1000
 /** The most characters of a service's own text that a tool's message carries. */
 const MAX_TEXT_LENGTH = 300
-/** C0 and C1 controls, the line and paragraph separators, the bidirectional controls and the byte order mark. */
-const UNSAFE_CHARACTERS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g
+/** What a secret in a service's own text becomes. */
+const REDACTED = "[redacted]"
 const NOT_FOUND_SUFFIX = "NotFoundError"
 const CREDENTIALS_REFUSED = "The OpenCode service refused the tools' credentials."
 const STARTING_OR_STOPPING = "The OpenCode service is starting or stopping; try again in a moment."
@@ -30,26 +31,45 @@ export type ServiceErrorOptions = {
   signal?: AbortSignal
   /** The time limit the request had, for the message that reports it; defaults to `REQUEST_TIMEOUT_MS`. */
   timeoutMs?: number
+  /**
+   * Texts that must not reach a message, such as the service's address and
+   * credentials: wherever the service's own text is forwarded, each non-empty
+   * entry in it is replaced by `[redacted]`, the longest first.
+   */
+  redact?: readonly string[]
 }
 
 function upstream(message: string): ToolError {
   return new ToolError("upstream_error", message)
 }
 
-/** A service's text on one line, without anything that moves or reorders text, and cut to `MAX_TEXT_LENGTH` characters. */
-function cleaned(text: string): string {
-  return [...text.replace(UNSAFE_CHARACTERS, " ").trim()].slice(0, MAX_TEXT_LENGTH).join("")
+function redacted(text: string, secrets: readonly string[]): string {
+  return [...secrets]
+    .filter((secret) => secret !== "")
+    .sort((a, b) => b.length - a.length)
+    .reduce((rest, secret) => rest.split(secret).join(REDACTED), text)
+}
+
+/** A service's text on one line, without anything that moves or reorders text, and cut to `MAX_TEXT_LENGTH` characters; `secrets` are replaced first. */
+export function cleaned(text: string, secrets: readonly string[] = []): string {
+  return [...redacted(text, secrets).replace(UNSAFE_CHARACTERS, " ").trim()].slice(0, MAX_TEXT_LENGTH).join("")
 }
 
 /** What a service's error says; empty when it says nothing. */
-function messageOf(error: Error): string {
+function messageOf(error: Error, secrets: readonly string[]): string {
   const message: unknown = error.message
-  return typeof message === "string" ? cleaned(message) : ""
+  return typeof message === "string" ? cleaned(message, secrets) : ""
+}
+
+/** An error's name; empty when it is not text, which the client lets a declared body make it. */
+function nameOf(error: Error): string {
+  const name: unknown = error.name
+  return typeof name === "string" ? name : ""
 }
 
 /** What a service's error says, or its name when it says nothing, cleaned and cut the same way. */
-function textOf(error: Error): string {
-  return messageOf(error) || cleaned(error.name)
+function textOf(error: Error, secrets: readonly string[]): string {
+  return messageOf(error, secrets) || cleaned(nameOf(error), secrets)
 }
 
 function propertyOf(value: unknown, name: string): unknown {
@@ -85,16 +105,17 @@ function clientFailure(error: ClientError, timeoutMs: number): ToolError {
 }
 
 /** The failure of an error the route declares, which the client throws as a plain `Error` named by the body's `_tag`; `undefined` for any other. */
-function declaredFailure(error: Error): ToolError | undefined {
+function declaredFailure(error: Error, secrets: readonly string[]): ToolError | undefined {
   if (isSessionNotFoundError(error)) return new ToolError("not_found", "The session does not exist.")
   if (isUnauthorizedError(error)) return upstream(CREDENTIALS_REFUSED)
   if (isServiceUnavailableError(error)) return upstream(STARTING_OR_STOPPING)
   if (isInvalidRequestError(error)) {
-    return new ToolError("invalid_argument", `${REQUEST_REFUSED}: ${textOf(error)}`)
+    return new ToolError("invalid_argument", `${REQUEST_REFUSED}: ${textOf(error, secrets)}`)
   }
-  if (error.name.endsWith(NOT_FOUND_SUFFIX)) return new ToolError("not_found", textOf(error))
-  if (error.name.endsWith("Error") && Object.hasOwn(error, "_tag") && propertyOf(error, "_tag") === error.name) {
-    return upstream(`The OpenCode service failed: ${textOf(error)}`)
+  const name = nameOf(error)
+  if (name.endsWith(NOT_FOUND_SUFFIX)) return new ToolError("not_found", textOf(error, secrets))
+  if (name.endsWith("Error") && Object.hasOwn(error, "_tag") && propertyOf(error, "_tag") === name) {
+    return upstream(`The OpenCode service failed: ${textOf(error, secrets)}`)
   }
   return undefined
 }
@@ -102,13 +123,16 @@ function declaredFailure(error: Error): ToolError | undefined {
 /**
  * The failure of a declared status whose body has no `_tag`, such as the bare
  * `404 {}` of a route this service version does not have: the client throws it
- * as a plain `Error`. Only the base class counts as the service's answer. The
- * package's own failures are `ToolError`s, and a programming error is a
- * subclass (`TypeError`, `RangeError`, …), which passes through unchanged.
+ * as a plain `Error`. Only the base class counts as the service's answer, and
+ * it is told by its prototype, which a body cannot shadow as it can the
+ * `constructor`. A name that is `"Error"`, or that the body made something
+ * other than text, is the base class's. The package's own failures are
+ * `ToolError`s, and a programming error is a subclass (`TypeError`,
+ * `RangeError`, …), which passes through unchanged.
  */
-function untaggedFailure(error: Error): ToolError | undefined {
-  if (error.constructor !== Error || error.name !== "Error") return undefined
-  const text = messageOf(error)
+function untaggedFailure(error: Error, secrets: readonly string[]): ToolError | undefined {
+  if (Object.getPrototypeOf(error) !== Error.prototype || !["Error", ""].includes(nameOf(error))) return undefined
+  const text = messageOf(error, secrets)
   return upstream(text === "" ? `${REQUEST_REFUSED}.` : `${REQUEST_REFUSED}: ${text}`)
 }
 
@@ -122,6 +146,9 @@ export function serviceError(error: unknown, options: ServiceErrorOptions = {}):
   if (error instanceof ToolError) return error
   if (options.signal?.aborted) return abortError(options.signal)
   if (error instanceof ClientError) return clientFailure(error, options.timeoutMs ?? REQUEST_TIMEOUT_MS)
-  if (error instanceof Error) return declaredFailure(error) ?? untaggedFailure(error) ?? error
+  if (error instanceof Error) {
+    const secrets = options.redact ?? []
+    return declaredFailure(error, secrets) ?? untaggedFailure(error, secrets) ?? error
+  }
   return error
 }

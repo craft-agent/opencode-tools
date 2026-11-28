@@ -5,6 +5,7 @@ import { runtimeOf, type ServiceEndpoint, type ToolRuntime } from "../runtime"
 import type { ToolContext } from "../tool"
 import { serviceEnv } from "./env"
 import { REQUEST_TIMEOUT_MS, UNREADABLE_REPLY, serviceError } from "./errors"
+import { secretsOf } from "./secrets"
 import { checkServiceVersion } from "./version"
 
 export { REQUEST_TIMEOUT_MS }
@@ -124,13 +125,14 @@ export async function connectService(ctx: ConnectContext, options: ConnectOption
   // Two callers may both start the service: of two services started together the loser exits by itself, so no lock is needed.
   endpoint ??= await startService(rt, ctx.signal)
 
+  const redact = secretsOf(endpoint)
   const client = mappingFailures(
     OpenCode.make({
       baseUrl: endpoint.url,
       headers: endpoint.headers,
       fetch: limitedFetch(rt, ctx.signal, timeoutMs),
     }),
-    (error) => serviceError(error, { signal: ctx.signal, timeoutMs }),
+    (error) => serviceError(error, { signal: ctx.signal, timeoutMs, redact }),
   )
   // The reply is JSON the client does not validate.
   const info: unknown = await client.server.info()
