@@ -1,8 +1,10 @@
 import {
+  MAX_NEVER_APPROVE,
   MAX_WAIT_SECONDS,
   MIN_WAIT_SECONDS,
   SERVICE_ENV,
   consumerRulesOf,
+  neverApproveOf,
   noteOf,
   protectedDirsOf,
   readRootsOf,
@@ -31,6 +33,7 @@ export const PROJECT = {
     wait_seconds: { type: "number", integer: true, min: MIN_WAIT_SECONDS, max: MAX_WAIT_SECONDS },
     note: "text",
     rules: "json",
+    never_approve: { type: "list", max: MAX_NEVER_APPROVE },
     read_roots: { type: "paths", max: 20 },
     protected_dirs: { type: "paths", max: 50 },
   } as Readonly<Record<string, OptionSpec>>,
@@ -39,6 +42,7 @@ export const PROJECT = {
     rolesOf(options)
     noteOf(options)
     consumerRulesOf(options)
+    neverApproveOf(options)
     readRootsOf(options)
     protectedDirsOf(options)
   },

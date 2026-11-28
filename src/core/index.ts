@@ -43,6 +43,7 @@ export {
   type Role,
   type Roles,
 } from "./role"
+export { MAX_ACTION_PATTERN, MAX_NEVER_APPROVE, neverApproveOf } from "./request/options"
 export {
   BINDING_KEY,
   BINDING_VERSION,

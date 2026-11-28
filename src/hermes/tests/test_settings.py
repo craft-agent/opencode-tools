@@ -65,6 +65,7 @@ class OptionFlagsTest(unittest.TestCase):
                 "wait_seconds": {"type": "number", "integer": True, "min": 1, "max": 3300},
                 "note": "text",
                 "rules": "json",
+                "never_approve": {"type": "list", "max": 50},
                 "read_roots": {"type": "paths", "max": 20},
                 "protected_dirs": {"type": "paths", "max": 50},
             },
