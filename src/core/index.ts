@@ -1,3 +1,12 @@
+export {
+  DEFAULT_WAIT_SECONDS,
+  MAX_WAIT_SECONDS,
+  MIN_WAIT_SECONDS,
+  WAIT_SECONDS_OPTION,
+  startDeadline,
+  waitSecondsOf,
+  type Deadline,
+} from "./deadline"
 export { ToolError, isAbortError, isToolError, type ErrorCode, type ErrorDetails, type JsonValue } from "./errors"
 export { abortError, exec, startDetached, type ExecOptions, type ExecResult, type StartOptions } from "./exec"
 export {
