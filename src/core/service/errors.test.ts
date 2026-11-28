@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { ClientError, type ClientErrorReason } from "@opencode/client"
 import { ToolError } from "../errors"
-import { REQUEST_TIMEOUT_MS, serviceError } from "./errors"
+import { QUESTION_SETTLED, REQUEST_TIMEOUT_MS, serviceError } from "./errors"
 
 /** An error the route declares, as the client throws it: the body's fields on an `Error` named by its `_tag`. */
 function declared(body: { _tag: string; message: string } & Record<string, unknown>): Error {
@@ -98,6 +98,26 @@ describe("serviceError: errors the route declares", () => {
     const error = mapped(declared({ _tag: "InvalidRequestError", message: "directory must be absolute" }))
     expect(error.code).toBe("invalid_argument")
     expect(error.message).toBe("The OpenCode service refused the request: directory must be absolute")
+  })
+
+  test("a question that was already answered or cancelled is stale", () => {
+    const error = mapped(declared({ _tag: "FormAlreadySettledError", id: "form_1", message: "Form already settled" }))
+    expect(error.code).toBe("stale")
+    expect(error.message).toBe(QUESTION_SETTLED)
+    expect(QUESTION_SETTLED).toBe("The question was already answered or cancelled.")
+  })
+
+  test("an answer the form refuses is invalid_argument and says why", () => {
+    const error = mapped(
+      declared({ _tag: "FormInvalidAnswerError", id: "form_1", message: "Missing required form field: branch" }),
+    )
+    expect(error.code).toBe("invalid_argument")
+    expect(error.message).toBe("The OpenCode service refused the request: Missing required form field: branch")
+  })
+
+  test("a form that is not found stays not_found with the service's text", () => {
+    const error = mapped(declared({ _tag: "FormNotFoundError", id: "form_1", message: "Form not found: form_1" }))
+    expect([error.code, error.message]).toEqual(["not_found", "Form not found: form_1"])
   })
 
   test("any other missing thing is not_found with the service's text", () => {

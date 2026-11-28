@@ -5,9 +5,12 @@
  * runner's API.
  */
 import type {
+  FormField,
   FormInfo,
+  JsonValue,
   PermissionRequest,
   SessionMessageAssistant,
+  SessionMessageAssistantTool,
   SessionMessageIdle,
   SessionStructuredError,
 } from "@opencode/client"
@@ -16,8 +19,13 @@ import { blankSession, fakeSession, type FakeSession, type FakeSessionState } fr
 /** What the helpers need of the fake service: what it holds and its clock. */
 export type FakePlayer = { state: FakeSessionState; clock: { now: number } }
 
+/** A question of the agent's question tool: a short header, the question, the options it offers and whether it takes several. */
+type FakeQuestion = { header: string; question: string; options: string[]; multiple?: boolean }
+
 const AGENT = "plan"
 const MODEL = { providerID: "acme", id: "model-1" }
+/** The title of every form the agent's question tool makes. */
+const QUESTIONS_TITLE = "Questions"
 
 function assistantOf(session: FakeSession, now: number): SessionMessageAssistant {
   return {
@@ -71,25 +79,92 @@ export function fakeStop(service: FakePlayer, sessionID: string): void {
 export function fakeAsk(
   service: FakePlayer,
   sessionID: string,
-  request: Pick<PermissionRequest, "action" | "resources">,
+  request: Pick<PermissionRequest, "action" | "resources"> &
+    Partial<Pick<PermissionRequest, "save" | "metadata" | "message" | "source">>,
 ): PermissionRequest {
   const session = fakeSession(service, sessionID)
-  const asked: PermissionRequest = { id: `${session.id}:request${session.pending.length + 1}`, sessionID, ...request }
+  session.asked += 1
+  const asked: PermissionRequest = { id: `${session.id}:request${session.asked}`, sessionID, ...request }
   session.pending.push(asked)
   return asked
 }
 
-/** Pauses the session on a question: a form with `title` and one text field; returns it. */
-export function fakeQuestion(service: FakePlayer, sessionID: string, title: string): FormInfo {
+/** Pauses the session on a request for a tool call: adds the running call to `step`, else to a new assistant message at the clock, and a request that names it; returns the request. */
+export function fakeToolAsk(
+  service: FakePlayer,
+  sessionID: string,
+  ask: {
+    tool: string
+    input: Record<string, JsonValue>
+    action: string
+    resources: string[]
+    save?: string[]
+    metadata?: PermissionRequest["metadata"]
+    step?: SessionMessageAssistant
+  },
+): PermissionRequest {
   const session = fakeSession(service, sessionID)
-  const form: FormInfo = {
-    id: `${session.id}:form${session.forms.length + 1}`,
-    sessionID,
-    title,
-    fields: [{ key: "answer", type: "string" }],
+  const now = service.clock.now
+  let step = ask.step
+  if (step === undefined) {
+    step = assistantOf(session, now)
+    session.messages.push(step)
   }
-  session.forms.push(form)
-  return form
+  const calls = step.content.filter((part) => part.type === "tool").length
+  const call: SessionMessageAssistantTool = {
+    type: "tool",
+    id: `${step.id}:call${calls + 1}`,
+    name: ask.tool,
+    state: { status: "running", input: ask.input, metadata: {} },
+    time: { created: now },
+  }
+  step.content.push(call)
+  return fakeAsk(service, sessionID, {
+    action: ask.action,
+    resources: ask.resources,
+    ...(ask.save !== undefined && { save: ask.save }),
+    ...(ask.metadata !== undefined && { metadata: ask.metadata }),
+    source: { type: "tool", messageID: step.id, id: call.id },
+  })
+}
+
+function addForm(session: FakeSession, form: Omit<FormInfo, "id" | "sessionID">): FormInfo {
+  session.asked += 1
+  const added: FormInfo = { id: `${session.id}:form${session.asked}`, sessionID: session.id, ...form }
+  session.forms.push(added)
+  return added
+}
+
+/** Pauses the session on a question: a form with `title` and `fields`, one text field by default; returns it. */
+export function fakeQuestion(
+  service: FakePlayer,
+  sessionID: string,
+  title: string,
+  fields: FormInfo["fields"] = [{ key: "answer", type: "string" }],
+): FormInfo {
+  return addForm(fakeSession(service, sessionID), { title, fields })
+}
+
+/** Pauses the session on a form as the agent's question tool makes it: one field `q<i>` per question, a single choice or, with `multiple`, a multiselect, each taking an answer of its own; returns it. */
+export function fakeQuestions(service: FakePlayer, sessionID: string, questions: FakeQuestion[]): FormInfo {
+  const [first, ...rest] = questions
+  if (first === undefined) throw new Error("A form needs at least one question")
+  const fields: FormInfo["fields"] = [
+    questionField(first, 0),
+    ...rest.map((question, index) => questionField(question, index + 1)),
+  ]
+  return addForm(fakeSession(service, sessionID), { title: QUESTIONS_TITLE, metadata: { kind: "question" }, fields })
+}
+
+function questionField({ header, question, options, multiple }: FakeQuestion, index: number): FormField {
+  const field = {
+    key: `q${index}`,
+    title: header,
+    description: question,
+    options: options.map((value) => ({ value, label: value, description: `Choose ${value}` })),
+    custom: true,
+  }
+  return multiple ? { ...field, type: "multiselect" } : { ...field, type: "string" }
 }
 
 /** Marks the session's newest assistant message as retrying its provider, adding an unfinished one when it has none. */

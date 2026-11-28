@@ -1,5 +1,7 @@
 import {
   ClientError,
+  isFormAlreadySettledError,
+  isFormInvalidAnswerError,
   isInvalidRequestError,
   isServiceUnavailableError,
   isSessionNotFoundError,
@@ -22,6 +24,8 @@ const MAX_TEXT_LENGTH = 300
 const REDACTED = "[redacted]"
 /** What a session that does not exist, or that is not the caller's to see, is told. */
 export const SESSION_NOT_FOUND = "The session does not exist."
+/** What a reply to a question that was already answered or cancelled is told. */
+export const QUESTION_SETTLED = "The question was already answered or cancelled."
 const NOT_FOUND_SUFFIX = "NotFoundError"
 const CREDENTIALS_REFUSED = "The OpenCode service refused the tools' credentials."
 const STARTING_OR_STOPPING = "The OpenCode service is starting or stopping; try again in a moment."
@@ -118,6 +122,10 @@ function declaredFailure(error: Error, secrets: readonly string[]): ToolError | 
   if (isUnauthorizedError(error)) return upstream(CREDENTIALS_REFUSED)
   if (isServiceUnavailableError(error)) return upstream(STARTING_OR_STOPPING)
   if (isInvalidRequestError(error)) {
+    return new ToolError("invalid_argument", `${REQUEST_REFUSED}: ${textOf(error, secrets)}`)
+  }
+  if (isFormAlreadySettledError(error)) return new ToolError("stale", QUESTION_SETTLED)
+  if (isFormInvalidAnswerError(error)) {
     return new ToolError("invalid_argument", `${REQUEST_REFUSED}: ${textOf(error, secrets)}`)
   }
   const name = nameOf(error)

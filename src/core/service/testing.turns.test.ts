@@ -52,6 +52,21 @@ describe("the fake service's messages", () => {
     expect((await client.message.list({ sessionID: id })).cursor).toEqual({})
   })
 
+  test("one message is read by its id, and a message the session lacks is a MessageNotFoundError", async () => {
+    const service = createFakeService()
+    const client = clientOf(service)
+    const id = await started(client)
+    const reply = fakeReply(service, id, "one")
+    expect(await client.session.message.get({ sessionID: id, messageID: reply.id })).toEqual(reply)
+    expect(await client.session.message.get({ sessionID: id, messageID: "msg_brief" })).toMatchObject({ type: "user" })
+    const error = await client.session.message.get({ sessionID: id, messageID: "msg_none" }).catch((e: unknown) => e)
+    expect(error).toHaveProperty("name", "MessageNotFoundError")
+    const missing = await client.session.message
+      .get({ sessionID: "ses_none", messageID: reply.id })
+      .catch((e: unknown) => e)
+    expect(missing).toHaveProperty("name", "SessionNotFoundError")
+  })
+
   test("answer a session that does not exist with a SessionNotFoundError on every route", async () => {
     const client = clientOf(createFakeService())
     const sessionID = "ses_none"

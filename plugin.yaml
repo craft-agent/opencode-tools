@@ -7,6 +7,8 @@ provides_tools:
   - opencode_grant_create
   - opencode_grant_read
   - opencode_grant_revoke
+  - opencode_request_read
+  - opencode_request_reply
   - opencode_run_read
   - opencode_run_start
   - opencode_run_start_write
@@ -43,6 +45,9 @@ config_schema:
   rules:
     type: dict
     description: 'Permission rules of your own for a run, by policy ("read-only" or "write"): each a list of rules with an action, a resource and an effect (allow, deny or ask).'
+  never_approve:
+    type: list
+    description: 'Action patterns a run''s permission request for which can only be rejected; "*" stands for any text.'
   read_roots:
     type: list
     description: Directories a read-only run may read outside its worktree, as absolute paths.

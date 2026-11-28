@@ -8,6 +8,8 @@ export type Roster = {
   refresh(): Promise<void>
   /** The ids of the sessions of the run `rootID` that are in the active set, the root itself first when it is: the run's active members. */
   membersOf(rootID: string): Promise<string[]>
+  /** The session `id` as the roster read it, when it did. */
+  entryOf(id: string): SessionEntry | undefined
 }
 
 /**
@@ -41,5 +43,6 @@ export function rosterOf(service: ServiceConnection, seen: readonly SessionEntry
       }
       return members
     },
+    entryOf: (id) => known.get(id),
   }
 }

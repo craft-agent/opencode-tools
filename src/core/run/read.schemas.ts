@@ -201,6 +201,25 @@ export const runReadOutput = z.object({
     .describe(`Method \`changes\`: the files the newest turn changed, at most ${MAX_CHANGED_FILES}.`),
 })
 
+/** What `get` and `wait` say of a run beyond its session: its identity, its state and what the state says. */
+export const runStateOutput = runReadOutput.pick({
+  title: true,
+  role: true,
+  agent: true,
+  model: true,
+  directory: true,
+  branch: true,
+  state: true,
+  waiting_on: true,
+  waiting_total: true,
+  retry: true,
+  result: true,
+  result_truncated: true,
+  error: true,
+  resumes: true,
+  message: true,
+})
+
 /** The arguments of a call of `opencode_run_read`. */
 export type RunReadInput = z.output<typeof runReadInput>
 /** The result of a call of `opencode_run_read`. */

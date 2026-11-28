@@ -16,10 +16,33 @@ import { lineOf, multilineOf } from "./read.text"
 type FileOutput = NonNullable<RunReadOutput["files"]>[number]
 
 /**
+ * The patches of one result, cleaned, while `MAX_PATCH_CHARACTERS` last: the
+ * first patch that does not fit is left out, and so is every one after it, so
+ * that what is kept is a prefix, as in a list.
+ */
+export function patchBudget(): {
+  take(patch: string): { patch: string } | { patch_omitted: true }
+  exhausted(): boolean
+} {
+  let budget = MAX_PATCH_CHARACTERS
+  let exhausted = false
+  return {
+    take(raw) {
+      const patch = multilineOf(raw)
+      if (!exhausted && patch.length <= budget) {
+        budget -= patch.length
+        return { patch }
+      }
+      exhausted = true
+      return { patch_omitted: true }
+    },
+    exhausted: () => exhausted,
+  }
+}
+
+/**
  * Method `changes`: the files the session's newest turn changed. With
- * `patches`, each file's patch while the budget for the whole result lasts;
- * the first patch that does not fit is left out, and so is every one after it,
- * so that what is kept is a prefix, as in a list.
+ * `patches`, each file's patch while the budget for the whole result lasts.
  */
 export async function readChanges(
   checked: CallOf<"changes">,
@@ -33,8 +56,7 @@ export async function readChanges(
       context: checked.patches ? PATCH_CONTEXT : NO_CONTEXT,
     }),
   )
-  let budget = MAX_PATCH_CHARACTERS
-  let exhausted = false
+  const patches = patchBudget()
   const files = changed.slice(0, MAX_CHANGED_FILES).map((change): FileOutput => {
     const file = {
       file: lineOf(change.file, MAX_FILE_NAME),
@@ -42,20 +64,13 @@ export async function readChanges(
       additions: change.additions,
       deletions: change.deletions,
     }
-    if (!checked.patches) return file
-    const patch = multilineOf(change.patch)
-    if (!exhausted && patch.length <= budget) {
-      budget -= patch.length
-      return { ...file, patch }
-    }
-    exhausted = true
-    return { ...file, patch_omitted: true }
+    return checked.patches ? { ...file, ...patches.take(change.patch) } : file
   })
   return {
     method: "changes",
     service_started: service.started,
     files,
     total: changed.length,
-    truncated: changed.length > files.length || exhausted,
+    truncated: changed.length > files.length || patches.exhausted(),
   }
 }

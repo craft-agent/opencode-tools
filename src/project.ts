@@ -1,8 +1,10 @@
 import {
+  MAX_NEVER_APPROVE,
   MAX_WAIT_SECONDS,
   MIN_WAIT_SECONDS,
   SERVICE_ENV,
   consumerRulesOf,
+  neverApproveOf,
   noteOf,
   protectedDirsOf,
   readRootsOf,
@@ -22,15 +24,16 @@ export const PROJECT = {
   /** Every setting's environment variable is `<envPrefix>_<SETTING>`. */
   envPrefix: "OPENCODE_TOOLS",
   /** The toolsets, in the order `all` lists them. */
-  toolsets: ["service", "run"] as readonly string[],
+  toolsets: ["service", "run", "request"] as readonly string[],
   /** The toolsets on when a setting names none. */
-  defaultToolsets: ["service", "run"] as readonly string[],
+  defaultToolsets: ["service", "run", "request"] as readonly string[],
   /** The package's own settings, which the tools themselves read: each snake_case name and its type, with bounds when it needs them. */
   options: {
     roles: "json",
     wait_seconds: { type: "number", integer: true, min: MIN_WAIT_SECONDS, max: MAX_WAIT_SECONDS },
     note: "text",
     rules: "json",
+    never_approve: { type: "list", max: MAX_NEVER_APPROVE },
     read_roots: { type: "paths", max: 20 },
     protected_dirs: { type: "paths", max: 50 },
   } as Readonly<Record<string, OptionSpec>>,
@@ -39,6 +42,7 @@ export const PROJECT = {
     rolesOf(options)
     noteOf(options)
     consumerRulesOf(options)
+    neverApproveOf(options)
     readRootsOf(options)
     protectedDirsOf(options)
   },

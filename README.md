@@ -274,6 +274,49 @@ What the rules of a run stop, and what they cannot:
 | `opencode_request_read`  | read      | what a run and its subagents are paused on, each with its whole command            |
 | `opencode_request_reply` | overwrite | answers a permission request `once` or `reject`, or answers or declines a question |
 
+A run pauses when its rules ask before a tool call, or when it puts a
+question. `opencode_request_read` reads what it is paused on by its `method`:
+
+| Method | Reads                                                                                     |
+| ------ | ----------------------------------------------------------------------------------------- |
+| `list` | every permission request and question of the run's session and of its subagents' sessions |
+| `get`  | one of them, and for an edit the patches of the files it would change                     |
+
+A permission request comes with its `text`, what an approval lets run: the
+whole command of a shell call, or another call's arguments as JSON. The
+service's own request holds only the simple commands of a shell call, so the
+text is read from the tool call in the session's messages. A question comes
+with its fields: what was asked, the options and what each field takes.
+
+`opencode_request_reply` takes the run's `session` and one to ten `replies`,
+each a request and a decision:
+
+| Decision | For                                 | Carries                                     |
+| -------- | ----------------------------------- | ------------------------------------------- |
+| `once`   | a permission request                | `text`, the request's text as the read gave |
+| `reject` | a permission request, or a question | `reason`, which the run reads               |
+| `answer` | a question                          | `answer`, a value for each field answered   |
+
+- **An approval is for the one call.** OpenCode's third answer, which saves
+  an approval for the whole project, is never sent.
+- **An approval repeats the request's text**, and one that differs sends
+  nothing. A harness that shows a call's arguments then shows what is
+  approved, and no request is approved by its id alone.
+- **A rejection always carries a reason**, and so does a declined question.
+  The run reads it and goes on; without one OpenCode ends the turn.
+- **Some requests can only be rejected**: one whose action matches
+  `never_approve`, one a subagent asked that the run's own rules ask about,
+  and one whose text an approval's prompt cannot show whole (over 2000
+  characters, or holding characters that hide or reorder text). A question
+  with a link to visit can only be declined. A person can still answer any
+  of them in OpenCode.
+- **Every reply of a call is checked before any is sent.** Approvals and
+  answers are then sent before rejections, since OpenCode rejects every
+  other pending request of a step along with one.
+- **The result says what became of each reply** (`sent`, `gone`, `failed`,
+  `not_sent`), names what a rejection took along, and carries the run's
+  next state when it arrives within ten seconds.
+
 ### `instruction`
 
 | Tool                          | Class     | Does                                             |
@@ -470,7 +513,7 @@ variable, and a setting in Hermes's configuration wins over the variable too.
 | `roles`           | `--roles`          | `OPENCODE_TOOLS_ROLES`          | the roles a run can start under, as JSON; unset, `plan` (read-only) and `build` (write), OpenCode's own agents                    |
 | `rules`           | `--rules`          | `OPENCODE_TOOLS_RULES`          | permission rules of your own for a run, per policy, as JSON; unset, none                                                          |
 | `note`            | `--note`           | `OPENCODE_TOOLS_NOTE`           | text added to what every run is told; unset, none                                                                                 |
-| `never_approve`   | `--never-approve`  | `OPENCODE_TOOLS_NEVER_APPROVE`  | the actions a request for which can only be rejected; unset, none                                                                 |
+| `never_approve`   | `--never-approve`  | `OPENCODE_TOOLS_NEVER_APPROVE`  | action patterns (`*` for any text) a request for which can only be rejected; unset, none                                          |
 | `read_roots`      | `--read-roots`     | `OPENCODE_TOOLS_READ_ROOTS`     | directories a read-only run may read outside its worktree; unset, none                                                            |
 | `output_roots`    | `--output-roots`   | `OPENCODE_TOOLS_OUTPUT_ROOTS`   | where a run's output directory may sit; unset, a run has none                                                                     |
 | `protected_dirs`  | `--protected-dirs` | `OPENCODE_TOOLS_PROTECTED_DIRS` | checkouts no write run may start in; unset, none                                                                                  |
