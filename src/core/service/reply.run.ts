@@ -124,8 +124,10 @@ export function diffOf(reply: unknown): DiffEntry[] {
   return read(z.array(diffEntry), reply)
 }
 
-/** When the newest item of a `session.inbox.list` reply was created; `undefined` for an empty inbox. */
-export function newestInboxOf(reply: unknown): number | undefined {
-  const times = read(z.array(z.looseObject({ time: created })), reply).map((item) => item.time.created)
+/** When the newest item of a `session.inbox.list` reply was created, of the items of `type` when one is given; `undefined` when there is none. */
+export function newestInboxOf(reply: unknown, type?: string): number | undefined {
+  const times = read(z.array(z.looseObject({ type: z.string().optional(), time: created })), reply)
+    .filter((item) => type === undefined || item.type === type)
+    .map((item) => item.time.created)
   return times.length === 0 ? undefined : Math.max(...times)
 }

@@ -1121,6 +1121,12 @@ wakes that session, also one that was interrupted.
   model and its instruction entries, and holds no turn of its own until it
   is started. A read says of a run that it is a fork, and of which session.
   A fork from an earlier message is not offered.
+- **What waited unread in the source's inbox is copied too, and is no sign
+  of a turn.** The service copies the items as made at the fork, a
+  subagent's report among them, and nothing wakes the copy. So in a session
+  that was never busy only a prompt counts as a turn about to begin;
+  otherwise a fresh fork would read as `running` for the half minute a turn
+  is given to show.
 - **A start can begin on a fork**: `fork` with a `session`, on either start
   tool. The copy is made first, then set up as a continued session under
   the role given, so a session that planned can be built on twice. A start
