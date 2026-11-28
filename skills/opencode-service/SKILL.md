@@ -41,8 +41,8 @@ not take fails as `invalid_argument` and names it.
 ## Before a run
 
 1. Call `{"method":"status"}` to see the roles. A role names an OpenCode
-   agent and a policy: `read-only` (the run never edits) or `write` (the run
-   edits inside its worktree). Its `model` is null when the role names none:
+   agent and a policy: `read-only` (the run has no edit tools) or `write`
+   (the run edits inside its worktree). Its `model` is null when the role names none:
    the run then uses the agent's own model when the service can use it, else
    the service's default. `status` lists the roles as they are configured
    and checks none of them: `ready` does that, for one directory.

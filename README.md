@@ -180,9 +180,10 @@ arrives with its first tool: one that no release carries yet is not a name
 | `history`     | sessions and token usage over a period                              |
 
 A run is an OpenCode session the tools started under a role and bound to its
-caller. A role names an OpenCode agent and a policy: a `read-only` run never
-edits, and a `write` run edits only inside its worktree. What a tool reads
-from a run is data, never instructions.
+caller. A role names an OpenCode agent and a policy: a `read-only` run has no
+edit tools and is denied the git commands that write, and a `write` run edits
+only inside its worktree. What a tool reads from a run is data, never
+instructions.
 
 ### `service`
 
@@ -217,6 +218,54 @@ setting.
 | `opencode_run_steer`       | add       | adds a message to a running turn                                         |
 | `opencode_run_interrupt`   | overwrite | stops a running turn; nothing is rolled back                             |
 | `opencode_run_fork`        | add       | copies an idle session, with its binding                                 |
+
+A start takes a `role`, a `brief`, and either a `directory` for a new
+session or a `session` to continue one. The directory is the top level of a
+Git worktree. The call sets the session up with the role's agent, model and
+rules, reads it back, and sends the brief only when the service reports the
+session as it was set up. It returns once the brief is admitted and does not
+wait for the turn. A session can change its role between turns: one that
+planned can go on to build, through the write tool.
+
+`opencode_run_read` follows a run by its `method`:
+
+| Method     | Reads                                                                             |
+| ---------- | --------------------------------------------------------------------------------- |
+| `list`     | the caller's runs, newest first, each with its role, directory, branch and state  |
+| `get`      | one run: its state, what it waits on and the result of its newest turn            |
+| `wait`     | the same, once the run hands back or the call's time is nearly over (`timed_out`) |
+| `messages` | the session's recent messages                                                     |
+| `changes`  | the files the newest turn changed, with line counts, and their patches on request |
+
+A run's state is read from the service each time; the tools keep no record
+of a run.
+
+| State         | Means                                                                                        |
+| ------------- | -------------------------------------------------------------------------------------------- |
+| `running`     | a turn of the session, or of one of its subagents, is under way                              |
+| `waiting`     | the run is paused on a permission request or a question                                      |
+| `completed`   | the newest turn ended                                                                        |
+| `failed`      | the newest turn ended in an error                                                            |
+| `interrupted` | the turn was stopped, or stopped without its end, which OpenCode takes up again at its start |
+| `unknown`     | the session holds no turn, or a brief's admission could not be confirmed                     |
+
+What the rules of a run stop, and what they cannot:
+
+- **Every run** is denied pushing from a shell, publishing a package, reading
+  secret files, changing git configuration and hooks, discarding work by
+  force, a git command that names another repository (`-C`, `--git-dir`,
+  `--work-tree`, `-c`), these tools themselves, and moving its own session.
+- **A read-only run** has no edit tools and is denied the git commands that
+  write. **A write run** is denied every edit outside its worktree, and asks
+  before it rewrites history, moves a branch or runs a package it downloads.
+- **Outside its worktree a run asks**, but for the directories OpenCode
+  itself sends it to and a read-only run's `read_roots`.
+- **The rules are text OpenCode matches, not a sandbox.** They stop a command
+  as it is plainly written. A read-only run keeps its shell, as OpenCode's
+  own `plan` agent does, and a shell command can still write a file. Read
+  what a run changed before relying on it.
+- **Starts made at the same moment in one worktree refuse each other**, so
+  that two never go through; call again after a moment.
 
 ### `request`
 
