@@ -12,9 +12,10 @@ from .required import make_guard
 from .runtime import Unavailable, locate_runtime
 from .settings import (
     SettingsError, emoji_setting, grant_flags, language_setting, option_flags, require_plugins_setting, settings_flags,
+    wait_seconds_setting,
 )
 from .skills import register_skills
-from .tools import register_tools
+from .tools import call_timeout, register_tools
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ def register(ctx: PluginContext) -> None:
         return
 
     guard = make_guard(ctx, required_names)
-    register_tools(ctx, runtime, tools, flags, emoji_setting(ctx), guard=guard)
+    timeout = call_timeout(wait_seconds_setting(ctx))
+    register_tools(ctx, runtime, tools, flags, emoji_setting(ctx), guard=guard, timeout=timeout)
     register_approval(ctx, runtime, tools, language_setting(ctx), [*option_flags(ctx), *grant_flags(ctx)], guard=guard)
     register_skills(ctx, runtime.skills_dir, {tool.toolset for tool in tools})

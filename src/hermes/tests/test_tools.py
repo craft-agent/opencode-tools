@@ -167,10 +167,22 @@ class HandlerTest(FakeCliCase):
 
     def test_a_timeout_is_an_error_result(self) -> None:
         self.reply("run demo_thing_create", sleep=5)
-        handler = self.handler()
-        with mock.patch.object(tools, "RUN_TIMEOUT_SECONDS", 0.3):
-            result = json.loads(handler({}))
+        with mock.patch.object(tools, "CALL_MARGIN_SECONDS", 0):
+            handler = self.handler(config={"wait_seconds": 0.3})
+        result = json.loads(handler({}))
         self.assertIn("did not finish", result["error"])
+
+    def test_the_handler_passes_its_timeout_to_the_runtime(self) -> None:
+        fake = mock.Mock()
+        fake.run.return_value = runtime.CliResult(0, '{"result":{}}', "")
+        tools.make_handler(fake, "demo_thing_create", [], timeout=77.5)({})
+        self.assertEqual(fake.run.call_args.kwargs["timeout"], 77.5)
+
+    def test_the_timeout_defaults_to_the_default_wait_and_its_margin(self) -> None:
+        fake = mock.Mock()
+        fake.run.return_value = runtime.CliResult(0, '{"result":{}}', "")
+        tools.make_handler(fake, "demo_thing_create", [])({})
+        self.assertEqual(fake.run.call_args.kwargs["timeout"], 80)
 
     def test_a_cli_that_cannot_start_is_an_error_result(self) -> None:
         broken = runtime.Runtime(

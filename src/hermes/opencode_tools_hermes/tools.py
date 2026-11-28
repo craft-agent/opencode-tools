@@ -20,8 +20,8 @@ from .listing import READ_CLASS, ToolInfo
 from . import project
 from .runtime import CliError, Runtime, agent_cwd
 
-#: How long one call may take, in seconds: a ceiling above what a tool call is expected to take.
-RUN_TIMEOUT_SECONDS = 150
+#: What the plugin allows a call beyond its own limit, in seconds, so the tool's answer arrives first.
+CALL_MARGIN_SECONDS = 30
 
 #: The toolset name of a tool in ``hermes tools``: the package's toolset after this prefix.
 TOOLSET_PREFIX = f"{project.PLUGIN_NAME}-"
@@ -54,10 +54,22 @@ def _failure(code: int, stdout: str, stderr: str) -> str:
     return error_result(f"{project.CLI_NAME} failed: {detail}")
 
 
+def call_timeout(wait_seconds: float) -> float:
+    """How long the plugin lets one call run: the tool's own limit ``wait_seconds`` and the margin after it."""
+    return wait_seconds + CALL_MARGIN_SECONDS
+
+
 def make_handler(
-    runtime: Runtime, tool_id: str, flags: list[str], guard: Guard | None = None
+    runtime: Runtime,
+    tool_id: str,
+    flags: list[str],
+    guard: Guard | None = None,
+    *,
+    timeout: float = call_timeout(project.DEFAULT_WAIT_SECONDS),
 ) -> Callable[..., str]:
     """The handler Hermes calls for one tool: it takes the arguments as one dict and never raises.
+
+    The command line is ended after ``timeout`` seconds.
 
     The pin the pin hook set (``PIN_ARGUMENT``) is taken out of the arguments and, when it is a
     pin, passed to ``run`` as ``--pin``; anything else runs as if there were none.
@@ -71,7 +83,7 @@ def make_handler(
             result = runtime.run(
                 ["run", tool_id, "--cwd", agent_cwd(), *flags, *caller_flags(kwargs), *([f"--pin={pin}"] if pin else [])],
                 stdin=json.dumps(run_arguments(args)),
-                timeout=RUN_TIMEOUT_SECONDS,
+                timeout=timeout,
             )
         except CliError as error:
             return error_result(str(error))
@@ -92,6 +104,8 @@ def register_tools(
     flags: list[str],
     emoji: Mapping[str, str] | None = None,
     guard: Guard | None = None,
+    *,
+    timeout: float = call_timeout(project.DEFAULT_WAIT_SECONDS),
 ) -> None:
     """Register each listed tool under its own ID, grouped in one Hermes toolset per package toolset."""
     toolset_emoji = TOOLSET_EMOJI if emoji is None else emoji
@@ -100,7 +114,9 @@ def register_tools(
             name=tool.id,
             toolset=TOOLSET_PREFIX + tool.toolset.replace("_", "-"),
             schema={"name": tool.id, "description": tool.description, "parameters": tool.input_schema},
-            handler=make_handler(runtime, tool.id, flags, guard if tool.write_class != READ_CLASS else None),
+            handler=make_handler(
+                runtime, tool.id, flags, guard if tool.write_class != READ_CLASS else None, timeout=timeout
+            ),
             emoji=toolset_emoji.get(tool.toolset, ""),
             description=tool.title,
         )
