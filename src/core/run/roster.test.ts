@@ -70,6 +70,30 @@ describe("membersOf", () => {
   })
 })
 
+describe("entryOf", () => {
+  test("is a session as the roster read it, the ones it was given and its ancestors included, and nothing for another", async () => {
+    const { service, connected } = await rosterFor((service) => {
+      seeded(service, "ses_root", undefined, false)
+      seeded(service, "ses_middle", "ses_root", false)
+      seeded(service, "ses_leaf", "ses_middle")
+      seeded(service, "ses_idle", undefined, false)
+    })
+    const given = { id: "ses_given", projectID: "p", directory: DIRECTORY, time: { created: 0, updated: 0 } }
+    const roster = rosterOf(connected, [given])
+    expect(roster.entryOf("ses_leaf")).toBeUndefined()
+    await roster.refresh()
+    await roster.membersOf("ses_root")
+    expect(roster.entryOf("ses_leaf")).toMatchObject({ id: "ses_leaf", parentID: "ses_middle", directory: DIRECTORY })
+    expect(roster.entryOf("ses_middle")).toMatchObject({ id: "ses_middle" })
+    expect(roster.entryOf("ses_given")).toBe(given)
+    expect(roster.entryOf("ses_idle")).toBeUndefined()
+    expect(roster.entryOf("ses_none")).toBeUndefined()
+    const before = reads(service).length
+    roster.entryOf("ses_leaf")
+    expect(reads(service)).toHaveLength(before)
+  })
+})
+
 describe("refresh", () => {
   test("reads each session of the active set once, however many times it is refreshed", async () => {
     const { service, connected } = await rosterFor((service) => {
