@@ -680,7 +680,27 @@ The settings, messages, README, skills and code use one vocabulary:
   timed-out connection, a service that is starting or stopping, a status the
   route does not declare, a refusal without a name (as of a route this
   service does not have) and a reply that cannot be read to `upstream_error`.
-  No message and no result carries the service's address or its password.
+  No message and no result carries the service's address or its password:
+  where a message carries the service's own text, both are taken out of it.
+- **A reply is checked where it is read.** The client does not validate what
+  the service sends, so a tool checks the fields it uses, and a reply of
+  another shape is `upstream_error`. A readiness check that took a malformed
+  reply for a model would answer that a run can start.
+- **A directory is read once the service has loaded it.** The first request
+  for a directory the service has not opened answers at once with nothing in
+  it: no agents, no providers, no repository. The service loads the
+  directory in the background, and no read waits for that. So a tool that
+  reads a directory first asks for its plugins until the service lists some,
+  as OpenCode's own command line does, for up to fifteen seconds, and fails
+  as `upstream_error` after that: a readiness check that answered from an
+  empty reply would report a repository as none. The load takes a fraction
+  of a second in a running service and a few seconds in one that has just
+  started. Whether a directory is a
+  repository is read from its project, which is settled before the first
+  reply; its branch arrives later and is waited for briefly, then left out.
+- **Asking about a directory opens it in OpenCode**, as starting OpenCode
+  there would: the service keeps it as a project. A read changes nothing
+  else.
 - **OpenCode 2.4.2 is the minimum version.** Below it every tool fails as
   `upstream_error`, naming the version found and the minimum. Above it nothing
   is refused by version, and a tool whose route is missing fails alone: the
@@ -799,7 +819,9 @@ The settings, messages, README, skills and code use one vocabulary:
 - **`roles` maps a name to `agent`, `policy` and, optionally, `model` and
   `note`.** A name is `[a-z][a-z0-9_]{0,23}`; `agent` is a primary agent the
   service lists; `model` is written as OpenCode writes one,
-  `<provider>/<model>` with an optional `#<variant>`.
+  `<provider>/<model>` with an optional `#<variant>`, and read as OpenCode
+  reads it: the provider ends at the first `/`, and the variant starts after
+  the first `#` that follows.
 - **With no `roles` configured there are two**: `plan`, OpenCode's own `plan`
   agent with the `read-only` policy, and `build`, its own `build` agent with
   the `write` policy. They are the agents every OpenCode has, so the tools
@@ -873,7 +895,10 @@ the last match wins; a subagent's session copies its parent's ruleset.
 - **A wait returns at `wait_seconds`, with `timed_out`.** The default is 50,
   under a harness that ends a tool call after a minute; the most is 3300. The
   Hermes plugin's limit on a call follows the setting.
-- **A result has a size limit and says when it was cut.**
+- **A result has a size limit and says when it was cut.** A list keeps a
+  number of entries and a size as JSON, whichever ends first, and counts
+  what there was. A name or a description is cut; an id never is, since a
+  cut id names nothing: its entry is left out instead.
 
 ### Settings of opencode-tools
 
@@ -903,6 +928,11 @@ the last match wins; a subagent's session copies its parent's ruleset.
   a reply whose shape drifted fails the type check. It is a `fetch` given to
   the client, in the test's own process, and holds what the units so far
   read; a unit adds the routes it needs.
+- **The fake answers as the service was seen to answer**, by default: a
+  directory it has not been asked about is still loading for its first
+  requests, and its branch comes after the rest. A tool that reads without
+  waiting then fails its own tests, which a fake that was always ready let
+  pass.
 - **The tool context has an optional `runtime`**: the environment, the clock,
   how the service is found, the `fetch` its requests go through and how a
   program is left running. An entry point leaves it out and gets the real
