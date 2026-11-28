@@ -28,7 +28,7 @@ describe("the spec", () => {
   })
 
   test("is on by default, with the service and run toolsets", () => {
-    expect(PROJECT.toolsets).toEqual(["service", "run", "request"])
+    expect(PROJECT.toolsets).toEqual(["service", "run", "request", "instruction"])
     expect(PROJECT.defaultToolsets).toEqual(["service", "run", "request"])
   })
 
