@@ -1,6 +1,6 @@
 ---
 name: opencode-run
-description: 'Use when handing work to an OpenCode run and following it: starting a run under a role in a Git worktree, continuing its session with another brief, waiting until it hands back, and reading its state, its result, its messages and the files it changed ("have OpenCode review this branch", "start a build run in this worktree", "is the run done?", "what did the run change?", "continue that session"). Covers choosing the start tool by the role''s policy, the wait loop, each state and what to do in it, and every refusal. Not for checking what the service offers or whether a role is ready (opencode-service), and not for answering a run''s permission requests or questions, steering or stopping a running turn.'
+description: 'Use when handing work to an OpenCode run and following it: starting a run under a role in a Git worktree, continuing its session with another brief, waiting until it hands back, and reading its state, its result, its messages and the files it changed ("have OpenCode review this branch", "start a build run in this worktree", "is the run done?", "what did the run change?", "continue that session"). Covers choosing the start tool by the role''s policy, the wait loop, each state and what to do in it, and every refusal. Not for checking what the service offers or whether a role is ready (opencode-service), not for answering a run''s permission requests or questions (opencode-request), and not for steering or stopping a running turn.'
 metadata:
   toolset: run
 ---
@@ -115,15 +115,17 @@ right only when the error may pass.
 
 ### A run that waits
 
-`waiting_on` lists what the run is paused on: for a permission request the
-`action` and the `resources` (a shell command as the run wrote it), for a
-question its `title`. A subagent's request is listed with its own session.
+`waiting_on` names what the run is paused on, a line each: for a permission
+request the `action` and the `resources` (for a shell call, its simple
+commands, not the whole command), for a question its `title`. A subagent's
+request is listed with its own session.
 
-These tools do not answer a request. When the tools that do
-(`opencode_request_read`, `opencode_request_reply`) are there, use them.
-Otherwise tell the person what the run asks: they can answer it in OpenCode,
-and the run goes on once they have. Do not start another run to get round a
-request.
+That is enough to see that a run waits, not to answer it.
+`opencode_request_read` reads each request whole and
+`opencode_request_reply` answers it: see the `opencode-request` skill. Where
+those tools are not there, tell the person what the run asks: they can
+answer it in OpenCode, and the run goes on once they have. Do not start
+another run to get round a request.
 
 ## Continue a run
 
