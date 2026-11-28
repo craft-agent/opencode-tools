@@ -22,6 +22,7 @@ export {
 } from "./grant"
 export { isWithin } from "./paths"
 export { defaultRuntime, localUrl, runtimeOf, type ServiceEndpoint, type ToolRuntime } from "./runtime"
+export { methodArguments, type MethodArgumentSpec, type MethodArguments } from "./methods"
 export {
   DEFAULT_ROLES,
   MAX_ROLES,
