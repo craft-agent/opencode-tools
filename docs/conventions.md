@@ -776,8 +776,11 @@ The settings, messages, README, skills and code use one vocabulary:
   or tool call of each request, never a first line: in a compound command the
   part that needs approval is often the last. Its facts count the approvals,
   the rejections and the answers of the call.
-- **A grant can bound a reply** by the number of its approvals and by the
-  actions it approves.
+- **A grant can bound a reply by the number of its approvals.** None lets a
+  call reject, answer and decline only. The actions a call approves are not a
+  bound: a call that approves nothing has none to measure, and a set of
+  values takes at least one. What may never be approved is `never_approve`'s
+  to say.
 - **A grant can bound a start by role**, and a brief by its length in
   characters. The role is a bound of the `prefix` kind: a role's name cannot
   hold the separator, so the bound matches it exactly, and the contract needs
@@ -1040,7 +1043,9 @@ ruleset. Every agent's rules start by allowing everything.
 - **After its replies a call waits ten seconds at most for the run to pause
   again or end**, within the call's time, and returns the run's state. The
   next request of a turn follows an approval within a few seconds, so one
-  result usually carries it.
+  result usually carries it. Where the run cannot be read after the replies
+  were sent, the result still says of each reply whether it was sent, and
+  gives the error in place of the run.
 
 ### What a run is told
 
