@@ -47,6 +47,7 @@ const rule = z.looseObject({ action: z.string(), resource: z.string(), effect: z
 const session = z.looseObject({
   id,
   parentID: id.optional(),
+  fork: z.looseObject({ sessionID: id.optional() }).optional(),
   projectID: id,
   agent: z.string().optional(),
   model: modelRef.optional(),
@@ -77,6 +78,8 @@ export type VcsEntry = z.output<typeof vcs>
 export type SessionEntry = {
   id: string
   parentID?: string
+  /** The session this one was forked from; absent for any other. */
+  forkedFrom?: string
   projectID: string
   agent?: string
   model?: { providerID: string; id: string; variant?: string }
@@ -116,6 +119,7 @@ function entryOf(row: z.output<typeof session>): SessionEntry {
   const {
     id: sessionId,
     parentID,
+    fork,
     projectID,
     agent,
     model,
@@ -132,6 +136,7 @@ function entryOf(row: z.output<typeof session>): SessionEntry {
     directory: location.directory,
     time,
     ...(parentID !== undefined && { parentID }),
+    ...(fork?.sessionID !== undefined && { forkedFrom: fork.sessionID }),
     ...(agent !== undefined && { agent }),
     ...(model !== undefined && { model }),
     ...(permissions !== undefined && { permissions }),

@@ -88,6 +88,7 @@ const stateSchema = z.enum(RUN_STATES)
 const listedRunSchema = z.object({
   session: z.string(),
   title: z.string().optional(),
+  forked_from: z.string().optional().describe("Present for a fork: the id of the session it was copied from."),
   role: z.string(),
   directory: z.string(),
   branch: z.string().nullable().describe("The branch the run is bound to; null on a detached HEAD."),
@@ -151,6 +152,10 @@ export const runReadOutput = z.object({
   more: z.boolean().optional().describe("Method `list`: true when the service holds more sessions than were read."),
   session: z.string().optional().describe("Methods `get` and `wait`: the run's session."),
   title: z.string().optional().describe("Methods `get` and `wait`: the session's title."),
+  forked_from: z
+    .string()
+    .optional()
+    .describe("Methods `get` and `wait`, present for a fork: the id of the session it was copied from."),
   role: z.string().optional().describe("Methods `get` and `wait`: the role the run started under."),
   agent: z.string().optional().describe("Methods `get` and `wait`: the session's agent."),
   model: z
@@ -204,6 +209,7 @@ export const runReadOutput = z.object({
 /** What `get` and `wait` say of a run beyond its session: its identity, its state and what the state says. */
 export const runStateOutput = runReadOutput.pick({
   title: true,
+  forked_from: true,
   role: true,
   agent: true,
   model: true,

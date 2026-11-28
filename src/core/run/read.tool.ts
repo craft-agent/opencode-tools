@@ -80,6 +80,7 @@ export const opencodeRunRead = defineTool({
     "`interrupted` with `resumes` is a turn that stopped without its end, which OpenCode takes up again when the service next starts. " +
     `\`result\` is cut to ${MAX_RESULT} characters, and \`result_truncated\` says so. ` +
     `A list holds at most ${MAX_LISTED} entries and keeps to a size: \`total\` counts them all and \`truncated\` says when some were left out. ` +
+    "A run that is a fork carries `forked_from`, the id of the session it was copied from, in `list`, `get` and `wait`. " +
     "A session that is not the caller's, or does not exist, is not found. " +
     "The call starts the service when it is not running; `service_started` says when it did. " +
     `A call ends within the \`${WAIT_SECONDS_OPTION}\` setting of its start, ${DEFAULT_WAIT_SECONDS} seconds unless set; \`wait\` stops a few seconds before it. ` +
