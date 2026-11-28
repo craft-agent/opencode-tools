@@ -2,7 +2,9 @@ import type { ToolSpec } from "./core"
 import { opencodeRequestRead } from "./core/request/read.tool"
 import { opencodeRequestReply } from "./core/request/reply.tool"
 import { opencodeRunRead } from "./core/run/read.tool"
+import { opencodeRunInterrupt } from "./core/run/interrupt.tool"
 import { opencodeRunStart, opencodeRunStartWrite } from "./core/run/start.tool"
+import { opencodeRunSteer } from "./core/run/steer.tool"
 import { opencodeServiceRead } from "./core/service/read"
 
 /** Every tool spec of the package; entry points register their tools from this list. */
@@ -11,6 +13,8 @@ export const ALL_TOOLS: ToolSpec[] = [
   opencodeRunRead,
   opencodeRunStart,
   opencodeRunStartWrite,
+  opencodeRunSteer,
+  opencodeRunInterrupt,
   opencodeRequestRead,
   opencodeRequestReply,
 ]
