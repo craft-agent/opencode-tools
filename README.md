@@ -422,7 +422,7 @@ variable, and a setting in Hermes's configuration wins over the variable too.
 | `rules`           | `--rules`          | `OPENCODE_TOOLS_RULES`          | permission rules of your own for a run, per policy, as JSON; unset, none                                                          |
 | `note`            | `--note`           | `OPENCODE_TOOLS_NOTE`           | text added to what every run is told; unset, none                                                                                 |
 | `never_approve`   | `--never-approve`  | `OPENCODE_TOOLS_NEVER_APPROVE`  | the actions a request for which can only be rejected; unset, none                                                                 |
-| `read_roots`      | `--read-roots`     | `OPENCODE_TOOLS_READ_ROOTS`     | directories a run may read outside its worktree; unset, none                                                                      |
+| `read_roots`      | `--read-roots`     | `OPENCODE_TOOLS_READ_ROOTS`     | directories a read-only run may read outside its worktree; unset, none                                                            |
 | `output_roots`    | `--output-roots`   | `OPENCODE_TOOLS_OUTPUT_ROOTS`   | where a run's output directory may sit; unset, a run has none                                                                     |
 | `protected_dirs`  | `--protected-dirs` | `OPENCODE_TOOLS_PROTECTED_DIRS` | checkouts no write run may start in; unset, none                                                                                  |
 | `wait_seconds`    | `--wait-seconds`   | `OPENCODE_TOOLS_WAIT_SECONDS`   | how long one call may take as a whole, a wait included, in seconds; default 50, 1 to 3300                                         |

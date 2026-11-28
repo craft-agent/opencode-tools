@@ -34,6 +34,18 @@ config_schema:
   wait_seconds:
     type: int
     description: How many seconds one call may take as a whole, a wait included; 1 to 3300. Defaults to 50.
+  note:
+    type: str
+    description: Text added to what every run is told.
+  rules:
+    type: dict
+    description: 'Permission rules of your own for a run, by policy ("read-only" or "write"): each a list of rules with an action, a resource and an effect (allow, deny or ask).'
+  read_roots:
+    type: list
+    description: Directories a read-only run may read outside its worktree, as absolute paths.
+  protected_dirs:
+    type: list
+    description: Checkouts no write run may start in, as absolute paths.
   language:
     description: The language of the approval card, such as ja. Defaults to Hermes's display language, else English.
   require_plugins:

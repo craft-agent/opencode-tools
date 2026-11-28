@@ -22,7 +22,8 @@ export const MAX_ROLES = 20
 const ROLE_NAME_PATTERN = /^[a-z][a-z0-9_]{0,23}$/
 const MAX_NOTE_LENGTH = 2000
 const ROLE_KEYS = ["agent", "policy", "model", "note"]
-const POLICIES: readonly Policy[] = ["read-only", "write"]
+/** Every policy, in the order the settings name them. */
+export const POLICIES: readonly Policy[] = ["read-only", "write"]
 const VARIANT_SEPARATOR = "#"
 const PROVIDER_SEPARATOR = "/"
 

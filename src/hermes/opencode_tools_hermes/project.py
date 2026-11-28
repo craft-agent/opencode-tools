@@ -18,7 +18,7 @@ TOOLSET_EMOJI: dict[str, str] = {}
 #: ``list``, ``path``, ``paths`` or ``json``, a mapping forwarded as JSON text) or a dict with ``type`` and optional
 #: bounds (``integer``, ``min``, ``max``), as in ``src/project.ts``. Write OPTIONS on one line with double quotes.
 #: A setting ``a_b`` becomes ``--a-b``.
-OPTIONS: dict[str, str | dict[str, object]] = {"roles": "json", "wait_seconds": {"type": "number", "integer": True, "min": 1, "max": 3300}}
+OPTIONS: dict[str, str | dict[str, object]] = {"roles": "json", "wait_seconds": {"type": "number", "integer": True, "min": 1, "max": 3300}, "note": "text", "rules": "json", "read_roots": {"type": "paths", "max": 20}, "protected_dirs": {"type": "paths", "max": 50}}
 
 #: The prefix of every setting's environment variable, ``<ENV_PREFIX>_<SETTING>``: ``PROJECT.envPrefix`` in ``src/project.ts``.
 ENV_PREFIX = "OPENCODE_TOOLS"

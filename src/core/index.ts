@@ -43,6 +43,17 @@ export {
   type Role,
   type Roles,
 } from "./role"
+export { GIT_TIMEOUT_MS, runGit } from "./run/git"
+export {
+  MAX_CONSUMER_RULES,
+  MAX_RULE_TEXT,
+  MAX_RUN_NOTE_LENGTH,
+  consumerRulesOf,
+  noteOf,
+  protectedDirsOf,
+  readRootsOf,
+} from "./run/options"
+export { readWorktree, refuseProtected, type Worktree } from "./run/worktree"
 export {
   REQUEST_TIMEOUT_MS,
   SERVICE_COMMAND,
