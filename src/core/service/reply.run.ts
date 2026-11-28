@@ -26,7 +26,8 @@ const idleMessage = z.looseObject({ outcome: z.enum(OUTCOMES), error: structured
 
 const permission = z.looseObject({ id, action: z.string(), resources: z.array(z.string()) })
 const form = z.looseObject({ id, title: z.string() })
-const diffEntry = z.looseObject({
+/** A file a turn changed, with its patch, as a reply carries it. */
+export const diffEntry = z.looseObject({
   file: z.string(),
   patch: z.string(),
   additions: z.number(),
