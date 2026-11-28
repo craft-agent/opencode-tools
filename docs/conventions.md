@@ -774,7 +774,10 @@ The settings, messages, README, skills and code use one vocabulary:
   the brief.
 - **An answer's prompt shows what it approves.** Its text is the whole command
   or tool call of each request, never a first line: in a compound command the
-  part that needs approval is often the last.
+  part that needs approval is often the last. Its facts count the approvals,
+  the rejections and the answers of the call.
+- **A grant can bound a reply** by the number of its approvals and by the
+  actions it approves.
 - **A grant can bound a start by role**, and a brief by its length in
   characters. The role is a bound of the `prefix` kind: a role's name cannot
   hold the separator, so the bound matches it exactly, and the contract needs
@@ -973,12 +976,66 @@ ruleset. Every agent's rules start by allowing everything.
 
 - **A permission request is answered `once` or `reject`.** OpenCode's third
   answer saves an approval for the whole project, which the person's own
-  sessions would inherit.
-- **`never_approve` lists the actions that can only be rejected.** The tool's
-  `gate` refuses such an approval before anyone is asked.
+  sessions would inherit, and approves other sessions' pending requests it
+  covers.
+- **What an approval lets run is the request's tool call.** A request holds
+  an action and resources, and for a shell call the resources are its simple
+  commands, cut out of the command. The call itself is in the messages of
+  the session that asked, under the message and the call id the request
+  names. So a request's `text` is read from there: the whole command of a
+  shell call, and any other call's arguments as JSON. A request that names
+  no call, or whose call cannot be read, has its resources as its text, one
+  to a line.
+- **An approval repeats the request's text**, as the read gave it, and one
+  that differs sends nothing. An MCP client shows a call's arguments and no
+  description, so a reply that named a request by its id alone would be
+  approved unseen there. No request is approved on its id.
+- **A rejection carries a reason, and so does a question that is declined.**
+  At a rejection without one the service ends the turn with no end marker,
+  and takes that turn up again when it next starts. With one, the call fails
+  with the reason, the run reads it and the turn goes on.
+- **`never_approve` lists the actions that can only be rejected**, as
+  patterns in which `*` stands for any text and which match a whole action.
+- **A subagent's request that the run's own ruleset asks for can only be
+  rejected.** A subagent's session copies the run's ruleset, so an ask the
+  ruleset adds reaches a subagent that denies the action itself, and an
+  approval would reopen what it denies. Such a request is told by the
+  session's rules: the last one that matches it is an ask. A request to work
+  outside the worktree is the exception, since every run asks there.
+- **A request whose text an approval's prompt cannot show whole can only be
+  rejected**: one over the prompt's 2000 characters. The approvals of one
+  call share that limit. A person can still answer such a request in
+  OpenCode.
+- **The reply tool's `gate` reads what is pending.** What a request asks is
+  in the service, not in the call's arguments, so this gate cannot tell from
+  its arguments and settings alone, as "Write classes" has it. It reads the
+  run's sessions within the call's time, and refuses an approval that can
+  only be a rejection before anyone is asked. A rejection is never refused.
 - **Only a run's own requests are answered**: those of its session and its
-  subagents' sessions.
-- **Every reply of a call is checked before any is sent.**
+  subagents' sessions, each through the session that asked. A form that
+  belongs to no session, such as one an MCP server asks for, is no run's.
+- **Every reply of a call is checked before any is sent**, against one read
+  of what is pending in the run. A request named twice is refused.
+- **A question is answered by field, and the answer is checked against its
+  fields first**: a key it lacks, a value of another kind, a value outside a
+  field's options where the field takes no text of the answerer's own, a
+  required field left out. A field that is a link to visit can only be
+  declined: no tool has visited it.
+- **Approvals and answers are sent before rejections.** The service rejects
+  every other pending request of a step along with one, with the same
+  reason; an approval sent after it would find its request gone. The result
+  names what a rejection took along.
+- **A request that is gone when its reply arrives is said so, and is no
+  failure.** The service answers in the same words for a request that was
+  answered, that never was and that is another session's, and a person may
+  have answered in OpenCode meanwhile.
+- **After a send that fails, no later reply is sent**, and the result says
+  of each reply whether it was sent. The failed one may have been taken, so
+  the caller reads what is pending before answering again.
+- **After its replies a call waits ten seconds at most for the run to pause
+  again or end**, within the call's time, and returns the run's state. The
+  next request of a turn follows an approval within a few seconds, so one
+  result usually carries it.
 
 ### What a run is told
 
@@ -1051,6 +1108,10 @@ ruleset. Every agent's rules start by allowing everything.
   `never_approve`, `read_roots`, `output_roots` and `protected_dirs`. `roles`
   and `wait_seconds` have the defaults above.
 - **A domain adds its settings here before it uses them.**
+- **`never_approve` is a list of at most 50 action patterns**, each text
+  without control characters of at most 200 characters. A pattern is matched
+  to an action as a whole, and to nothing else of a request: what a command
+  holds is the ruleset's to deny.
 
 ### Text a tool reads
 
@@ -1069,7 +1130,10 @@ ruleset. Every agent's rules start by allowing everything.
   directory it has not been asked about is still loading for its first
   requests, and its branch comes after the rest. A tool that reads without
   waiting then fails its own tests, which a fake that was always ready let
-  pass.
+  pass. A rejection takes the other pending requests of its step, one
+  without a reason takes the session out of the active set with no end
+  written, and a request or a form that is gone, settled or another
+  session's answers with the service's own status and error.
 - **The tool context has an optional `runtime`**: the environment, the clock,
   how the service is found, the `fetch` its requests go through and how a
   program is left running. An entry point leaves it out and gets the real
