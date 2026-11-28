@@ -27,7 +27,10 @@ import type {
 } from "@opencode/client"
 import { abortError } from "../exec"
 import type { ServiceEndpoint, ToolRuntime } from "../runtime"
+import { createSessionRouter, defaultSessionState, type FakeReply, type FakeSessionState } from "./testing.sessions"
 import { MIN_SERVICE_VERSION } from "./version"
+
+export { fakeSession, type FakeSession } from "./testing.sessions"
 
 /** The endpoint the fake runtime's `discover` returns. */
 export const FAKE_ENDPOINT: ServiceEndpoint = {
@@ -35,6 +38,8 @@ export const FAKE_ENDPOINT: ServiceEndpoint = {
   headers: { authorization: "Basic fake" },
 }
 
+/** The scratch directory the fake service reports. */
+export const FAKE_TMP = "/scratch/opencode"
 /** The directory a reply names when the request names none. */
 const DEFAULT_DIRECTORY = "/work/acme"
 const LOCATION_QUERY = "location[directory]"
@@ -51,7 +56,7 @@ const UNAUTHORIZED: UnauthorizedError = { _tag: "UnauthorizedError", message: "T
 export type FakeRepository = { vcs: VcsInfo; status: VcsFileStatus[] }
 
 /** What the fake service holds; a test changes it between calls. */
-export type FakeServiceState = {
+export type FakeServiceState = FakeSessionState & {
   info: ServerInfo
   agents: AgentInfo[]
   models: ModelInfo[]
@@ -84,6 +89,8 @@ export type FakeRequest = {
   query: Record<string, string>
   /** Whether it carried the authorization header of `FAKE_ENDPOINT`. */
   authorized: boolean
+  /** The parsed JSON body of a request that has one; absent otherwise. */
+  body?: unknown
 }
 
 export type FakeOutcome = Response | Error | (() => Response | Promise<Response>)
@@ -91,6 +98,8 @@ export type FakeOutcome = Response | Error | (() => Response | Promise<Response>
 export type FakeService = {
   /** What the service holds; a test changes it between calls. */
   state: FakeServiceState
+  /** The virtual clock: the times of a session follow it, and `fakeRuntime` uses the same one. */
+  clock: { now: number }
   /** The `fetch` to give the client. */
   fetch: typeof globalThis.fetch
   /** Every request received, oldest first, those it refused for lack of credentials included. */
@@ -129,7 +138,7 @@ function fakeModel(modelID: string, variants: string[] = []): ModelInfo {
 function defaultState(): FakeServiceState {
   const models = [fakeModel("model-1"), fakeModel("model-2", ["low", "high"])]
   return {
-    info: { version: MIN_SERVICE_VERSION, pid: 4242, urls: [FAKE_ENDPOINT.url], paths: { tmp: "/tmp/acme" } },
+    info: { version: MIN_SERVICE_VERSION, pid: 4242, urls: [FAKE_ENDPOINT.url], paths: { tmp: FAKE_TMP } },
     agents: [fakeAgent("plan", "primary"), fakeAgent("build", "primary"), fakeAgent("scout", "subagent")],
     models,
     defaultModel: models[0]!,
@@ -139,6 +148,7 @@ function defaultState(): FakeServiceState {
     plugins: [fakePlugin("acme.one"), fakePlugin("acme.two")],
     coldReads: 2,
     vcsLagReads: 1,
+    ...defaultSessionState(),
   }
 }
 
@@ -230,6 +240,17 @@ function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS })
 }
 
+function replyResponse(reply: FakeReply): Response {
+  return reply.body === undefined
+    ? new Response(null, { status: reply.status })
+    : jsonResponse(reply.body, reply.status)
+}
+
+/** The parsed JSON body of a request; absent when it has none. */
+function bodyOf(init: RequestInit | undefined): { body?: unknown } {
+  return typeof init?.body === "string" ? { body: JSON.parse(init.body) as unknown } : {}
+}
+
 function urlOf(input: Parameters<typeof globalThis.fetch>[0]): URL {
   if (input instanceof URL) return input
   return new URL(typeof input === "string" ? input : input.url)
@@ -248,6 +269,8 @@ function untilAborted<T>(work: Promise<T>, signal: AbortSignal | null | undefine
 /** Creates the one fake service the tools' tests run against: a `fetch` for the client that answers from `state`. */
 export function createFakeService(initial: Partial<FakeServiceState> = {}): FakeService {
   const state: FakeServiceState = { ...defaultState(), ...initial }
+  const clock = { now: FAKE_START_TIME }
+  const sessionRoute = createSessionRouter(state, { clock, defaultDirectory: DEFAULT_DIRECTORY, projectId })
   const requests: FakeRequest[] = []
   const failures: { path: string | RegExp; outcome: FakeOutcome }[] = []
   /** The directories requests have named, and how far each has come in loading: requests of the loading routes seen, and `vcs.get` requests since it loaded. */
@@ -262,9 +285,12 @@ export function createFakeService(initial: Partial<FakeServiceState> = {}): Fake
       if (outcome instanceof Error) throw outcome
       return typeof outcome === "function" ? outcome() : outcome
     }
-    const route = ROUTES[`${request.method} ${request.path}`]
-    if (!route) return jsonResponse({}, HTTP_NOT_FOUND)
+    const route = ROUTES[`${request.method} ${request.path}`] as Route | undefined
+    const session = route ? undefined : sessionRoute(request.method, request.path)
+    if (!route && !session) return jsonResponse({}, HTTP_NOT_FOUND)
     if (!request.authorized) return jsonResponse(UNAUTHORIZED, HTTP_UNAUTHORIZED)
+    if (session) return replyResponse(session({ query: request.query, body: request.body }))
+    if (!route) return jsonResponse({}, HTTP_NOT_FOUND)
     const named = request.query[LOCATION_QUERY]
     if (named !== undefined && state.missing.includes(named)) {
       const body: LocationNotFoundError = {
@@ -301,6 +327,7 @@ export function createFakeService(initial: Partial<FakeServiceState> = {}): Fake
       path: url.pathname,
       query: Object.fromEntries(url.searchParams),
       authorized: new Headers(init?.headers).get("authorization") === FAKE_ENDPOINT.headers?.authorization,
+      ...bodyOf(init),
     }
     requests.push(request)
     return untilAborted(answer(request), init?.signal)
@@ -308,6 +335,7 @@ export function createFakeService(initial: Partial<FakeServiceState> = {}): Fake
 
   return {
     state,
+    clock,
     fetch: serve as typeof globalThis.fetch,
     requests,
     failNext: (path, outcome) => {
@@ -337,7 +365,7 @@ export type FakeRuntimeOptions = {
 
 /** The runtime of a test: the fake service's `fetch`, a virtual clock, no real wait and no real program. */
 export function fakeRuntime(service: FakeService, options: FakeRuntimeOptions = {}): FakeRuntime {
-  const clock = { now: FAKE_START_TIME }
+  const { clock } = service
   const started: FakeRuntime["started"] = []
   let running = options.running ?? true
   /** The `discover` calls that still find nothing after a start; `undefined` while no start is under way. */
