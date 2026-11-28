@@ -18,10 +18,18 @@ TOOLSET_EMOJI: dict[str, str] = {}
 #: ``list``, ``path``, ``paths`` or ``json``, a mapping forwarded as JSON text) or a dict with ``type`` and optional
 #: bounds (``integer``, ``min``, ``max``), as in ``src/project.ts``. Write OPTIONS on one line with double quotes.
 #: A setting ``a_b`` becomes ``--a-b``.
-OPTIONS: dict[str, str | dict[str, object]] = {"roles": "json"}
+OPTIONS: dict[str, str | dict[str, object]] = {"roles": "json", "wait_seconds": {"type": "number", "integer": True, "min": 1, "max": 3300}}
+
+#: The prefix of every setting's environment variable, ``<ENV_PREFIX>_<SETTING>``: ``PROJECT.envPrefix`` in ``src/project.ts``.
+ENV_PREFIX = "OPENCODE_TOOLS"
+
+#: The seconds one call may take as a whole when ``wait_seconds`` is unset: ``DEFAULT_WAIT_SECONDS`` in ``src/core/deadline.ts``.
+DEFAULT_WAIT_SECONDS = 50
 
 __all__ = [
     "CLI_NAME",
+    "DEFAULT_WAIT_SECONDS",
+    "ENV_PREFIX",
     "OPTIONS",
     "PLUGIN_NAME",
     "SKILL_PREFIX",

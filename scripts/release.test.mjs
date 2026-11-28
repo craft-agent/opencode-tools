@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { DEFAULT_WAIT_SECONDS } from "../src/core"
 import { forwardedVariables, settingVariables } from "../src/entry/settings"
 import { PROJECT } from "../src/project"
 import { CODEX_APPROVAL_MODE, CODEX_MANIFEST } from "./codex-env.mjs"
@@ -150,6 +151,12 @@ describe("MCP configurations", () => {
     )
     expect(declaration).not.toBeNull()
     expect(JSON.parse(declaration[1].replace(/\bTrue\b/g, "true"))).toEqual(PROJECT.options)
+  })
+
+  test("the Hermes plugin mirrors the environment prefix and the default wait", () => {
+    const source = read(`${HERMES_PACKAGE}/project.py`)
+    expect(source.match(/^ENV_PREFIX = "(.*)"$/m)?.[1]).toBe(PROJECT.envPrefix)
+    expect(Number(source.match(/^DEFAULT_WAIT_SECONDS = (\d+)$/m)?.[1])).toBe(DEFAULT_WAIT_SECONDS)
   })
 })
 

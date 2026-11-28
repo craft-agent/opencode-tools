@@ -425,7 +425,7 @@ variable, and a setting in Hermes's configuration wins over the variable too.
 | `read_roots`      | `--read-roots`     | `OPENCODE_TOOLS_READ_ROOTS`     | directories a run may read outside its worktree; unset, none                                                                      |
 | `output_roots`    | `--output-roots`   | `OPENCODE_TOOLS_OUTPUT_ROOTS`   | where a run's output directory may sit; unset, a run has none                                                                     |
 | `protected_dirs`  | `--protected-dirs` | `OPENCODE_TOOLS_PROTECTED_DIRS` | checkouts no write run may start in; unset, none                                                                                  |
-| `wait_seconds`    | `--wait-seconds`   | `OPENCODE_TOOLS_WAIT_SECONDS`   | how long a wait blocks before it returns; default 50, 1 to 3300                                                                   |
+| `wait_seconds`    | `--wait-seconds`   | `OPENCODE_TOOLS_WAIT_SECONDS`   | how long one call may take as a whole, a wait included, in seconds; default 50, 1 to 3300                                         |
 
 The settings from `roles` down are the package's own, and each arrives with
 the tools that read it. `roles` and `rules` are maps: a mapping in Hermes's
