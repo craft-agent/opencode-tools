@@ -36,13 +36,15 @@ function forkedTitle(base: string, number: number): string {
 /**
  * Forks a session into a new one, which is stored: no parent, a `fork` field
  * naming the source and its newest message, the source's agent, model,
- * metadata, permissions, entries and title copied (the title numbered), and
- * its messages copied under new ids, a turn still in flight left out. The
+ * metadata, permissions, entries and title copied (the title numbered), what
+ * waits unread in its inbox copied as items made now, under new ids, and its
+ * messages copied under new ids, a turn still in flight left out. The
  * source may be running; the fork is not. A session with no messages answers
  * 400. The `before` of the request is not modelled: the body is `{}` and the
  * fork always goes through the newest message.
  */
-function fork(session: FakeSession, _call: Call, { state, clock, newSessionId, report }: ControlContext): FakeReply {
+function fork(session: FakeSession, _call: Call, context: ControlContext): FakeReply {
+  const { state, clock, newSessionId, newMessageId, report } = context
   const newest = session.messages.at(-1)
   if (newest === undefined) return emptySession(session.id)
   const id = newSessionId()
@@ -56,6 +58,12 @@ function fork(session: FakeSession, _call: Call, { state, clock, newSessionId, r
     ...(session.metadata !== undefined && { metadata: structuredClone(session.metadata) }),
     ...(session.permissions !== undefined && { permissions: structuredClone(session.permissions) }),
     entries: structuredClone(session.entries),
+    inbox: session.inbox.map((item) => ({
+      ...structuredClone(item),
+      id: newMessageId(),
+      sessionID: id,
+      time: { created: clock.now },
+    })),
     messages: session.messages
       .filter((message) => message.type !== "assistant" || message.time.completed !== undefined)
       .map((message, index) => ({ ...structuredClone(message), id: `${id}:message${index + 1}` })),
