@@ -7,6 +7,8 @@ import type {
   ConflictError,
   FileDiffInfo,
   FormInfo,
+  InvalidRequestError,
+  JobInfo,
   JsonValue,
   PermissionRequest,
   SessionActive,
@@ -15,6 +17,7 @@ import type {
   SessionActiveOutput,
   SessionGetOutput,
   SessionInboxListOutput,
+  SessionInboxSynthetic,
   SessionInboxUser,
   SessionInfo,
   SessionListOutput,
@@ -27,10 +30,14 @@ import type {
 } from "@opencode/client"
 import { VARIANT_DEFAULT } from "../role"
 import { ANSWER_ROUTES } from "./testing.answers"
+import { CONTROL_ROUTES, JOB_ROUTES, type ControlContext } from "./testing.control"
+import { FORK_ROUTES } from "./testing.fork"
+import { blankSession, startTurn } from "./testing.lifecycle"
 import { TURN_ROUTES, type StopSession } from "./testing.turns"
 
 const HTTP_OK = 200
 const HTTP_NO_CONTENT = 204
+const HTTP_BAD_REQUEST = 400
 const HTTP_NOT_FOUND = 404
 const HTTP_CONFLICT = 409
 const DEFAULT_LIST_LIMIT = 50
@@ -43,6 +50,8 @@ const FIRST_ID_NUMBER = 99_999_999
 const ID_DIGITS = 8
 const SESSION_ID_PREFIX = "ses_"
 const MESSAGE_ID_PREFIX = "msg_"
+/** What the key of an instruction entry has to match. */
+const ENTRY_KEY_PATTERN = /^[a-z0-9][a-z0-9._-]*$/
 
 /** A prompt the fake service received, kept beside the session and never sent in it. */
 export type FakePrompt = { id: string; text: string; delivery: SessionInboxUser["delivery"] }
@@ -53,14 +62,17 @@ export type FakeAnswer =
   | { kind: "form"; id: string; answer: Record<string, JsonValue> }
   | { kind: "cancel"; id: string; message?: string }
 
+/** What the fake service's inbox holds: the two kinds of item it makes, a prompt and a report. */
+export type FakeInboxItem = SessionInboxUser | SessionInboxSynthetic
+
 /** A session as the fake keeps it: the client's `SessionInfo`, and what a test reads of what was done to it. */
 export type FakeSession = SessionInfo & {
   prompts: FakePrompt[]
-  /** The prompts that were not started: those of a session that does not run them, or that were given `resume: false`. */
-  inbox: SessionInboxUser[]
+  /** What waits for the session's next step: the prompts that were not started (those of a session that does not run them, that is running, or that were given `resume: false`) and the reports of background jobs. */
+  inbox: FakeInboxItem[]
   /** The session's instruction entries, by key. */
   entries: Record<string, JsonValue>
-  /** The session's messages, oldest first: a prompt that runs appends its user message, and a test plays the rest (`testing.play.ts`). */
+  /** The session's messages, oldest first: a prompt that starts a turn appends its user message, a step delivers the steers of the inbox, and a test plays the rest (`testing.play.ts`). */
   messages: SessionMessageInfo[]
   /** The permission requests the session is paused on. */
   pending: PermissionRequest[]
@@ -87,11 +99,15 @@ export type FakeSessionState = {
   reportsBack?: (session: SessionInfo) => SessionInfo
   /** Whether the instruction entry routes answer `404 {}`, as a service without them does. Default false. */
   entriesRefused: boolean
+  /** What `experimental.job.list` lists: a running subagent is a job, and a test adds the others (`testing.play.ts`). */
+  jobs: JobInfo[]
+  /** Whether the job routes answer `404 {}`, as a service without them does. Default false. */
+  jobsRefused: boolean
 }
 
 /** The initial session state. */
 export function defaultSessionState(): FakeSessionState {
-  return { sessions: [], active: [], runsPrompts: true, entriesRefused: false }
+  return { sessions: [], active: [], runsPrompts: true, entriesRefused: false, jobs: [], jobsRefused: false }
 }
 
 /** What the session routes need of the service around them. */
@@ -118,34 +134,14 @@ export function fakeSession(service: { state: FakeSessionState }, id: string): F
   return session
 }
 
-/** A session with nothing in it but its identity and its times: what a route or a test adds to. */
-export function blankSession(init: { id: string; projectID: string; directory: string; now: number }): FakeSession {
-  return {
-    id: init.id,
-    projectID: init.projectID,
-    cost: 0,
-    tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-    time: { created: init.now, updated: init.now },
-    location: { directory: init.directory },
-    prompts: [],
-    inbox: [],
-    entries: {},
-    messages: [],
-    pending: [],
-    forms: [],
-    answers: [],
-    settled: [],
-    asked: 0,
-    diff: [],
-  }
-}
-
 /** A request with the captures of the path it matched. */
 export type Call = SessionCall & { params: string[] }
 type Handler = (call: Call) => FakeReply
 type SessionHandler = (session: FakeSession, call: Call) => FakeReply
 
 const NO_CONTENT: FakeReply = { status: HTTP_NO_CONTENT }
+/** What a route answers on a service that does not have it. */
+const REFUSED: FakeReply = { status: HTTP_NOT_FOUND, body: {} }
 
 function ok(body: unknown): FakeReply {
   return { status: HTTP_OK, body }
@@ -266,9 +262,8 @@ export function createSessionRouter(state: FakeSessionState, env: SessionEnviron
     } satisfies SessionPromptOutput
     items.set(id, item)
     session.prompts.push({ id, text: input.text, delivery })
-    if (state.runsPrompts && input.resume !== false) {
-      if (!state.active.includes(session.id)) state.active.push(session.id)
-      session.time.busy = env.clock.now
+    if (state.runsPrompts && input.resume !== false && !state.active.includes(session.id)) {
+      startTurn(state, session, env.clock.now)
       session.messages.push({ id, time: { created: env.clock.now }, type: "user", text: input.text })
     } else {
       session.inbox.push(item)
@@ -290,8 +285,18 @@ export function createSessionRouter(state: FakeSessionState, env: SessionEnviron
   }
   const entryRoute =
     (handler: SessionHandler): Handler =>
-    (call) =>
-      state.entriesRefused ? { status: HTTP_NOT_FOUND, body: {} } : withSession(handler)(call)
+    (call) => {
+      if (state.entriesRefused) return REFUSED
+      const key = call.params[1]
+      return key !== undefined && !ENTRY_KEY_PATTERN.test(key) ? invalidKey() : withSession(handler)(call)
+    }
+  const context: ControlContext = {
+    state,
+    clock: env.clock,
+    newMessageId: () => newId("message", MESSAGE_ID_PREFIX),
+    newSessionId: () => newId("session", SESSION_ID_PREFIX),
+    report,
+  }
 
   const routes: [method: string, pattern: RegExp, handler: Handler][] = [
     ["POST", /^\/api\/session$/, create],
@@ -351,6 +356,16 @@ export function createSessionRouter(state: FakeSessionState, env: SessionEnviron
     ["GET", /^\/api\/experimental\/session\/([^/]+)\/instructions\/entries$/, entryRoute(entryList)],
     ["PUT", /^\/api\/experimental\/session\/([^/]+)\/instructions\/entries\/([^/]+)$/, entryRoute(entryPut)],
     ["DELETE", /^\/api\/experimental\/session\/([^/]+)\/instructions\/entries\/([^/]+)$/, entryRoute(entryRemove)],
+    ...[...CONTROL_ROUTES, ...FORK_ROUTES].map(([method, pattern, handler]): [string, RegExp, Handler] => [
+      method,
+      pattern,
+      withSession((session, call) => handler(session, call, context)),
+    ]),
+    ...JOB_ROUTES.map(([method, pattern, handler]): [string, RegExp, Handler] => [
+      method,
+      pattern,
+      (call) => (state.jobsRefused ? REFUSED : handler(call, context)),
+    ]),
   ]
 
   return (method, path) => {
@@ -360,6 +375,15 @@ export function createSessionRouter(state: FakeSessionState, env: SessionEnviron
     }
     return undefined
   }
+}
+
+function invalidKey(): FakeReply {
+  const body: InvalidRequestError = {
+    _tag: "InvalidRequestError",
+    message: `Expected a string matching the RegExp ${ENTRY_KEY_PATTERN.source}\n  at ["key"]`,
+    kind: "Params",
+  }
+  return { status: HTTP_BAD_REQUEST, body }
 }
 
 function conflict(id: string): FakeReply {

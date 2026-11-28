@@ -716,10 +716,13 @@ The settings, messages, README, skills and code use one vocabulary:
   yet seen would break the tools at each OpenCode release. A development
   build's version, written `0.0.0-…` or not as `x.y.z` at all, is not refused
   either.
-- **Stable routes only, with one exception.** The instruction entries exist
-  only as an experimental route. Where the service refuses it, the operating
-  note goes at the head of the brief, and the instruction tools fail as
-  `upstream_error`.
+- **Stable routes only, with two exceptions**, each with what happens where
+  the service refuses it. The instruction entries exist only as an
+  experimental route: without it the operating note goes at the head of the
+  brief, and the instruction tools fail as `upstream_error`. The commands a
+  run moved to the background are listed and stopped only through the
+  experimental job routes: without them an interrupt stops the run's
+  sessions and says that the background was not checked.
 - **The README lists the versions the tools are tested against.**
 
 ### Domains and names
@@ -781,6 +784,16 @@ The settings, messages, README, skills and code use one vocabulary:
   bound: a call that approves nothing has none to measure, and a set of
   values takes at least one. What may never be approved is `never_approve`'s
   to say.
+- **A steer's prompt shows the message**, as its text, with the role and the
+  run's state as its facts. An interrupt's facts are the role, the run's
+  state and what of it is active: it has no text. A fork's are the role and
+  the session's title.
+- **An instruction's prompt shows what the session will be told**: a set's
+  text is the value and a remove's the value it removes, each with the key
+  as a fact.
+- **A grant can bound a steer by the length of its message, and a set by the
+  length of its value**, as a brief is bounded. An interrupt, a fork and a
+  remove have nothing to measure.
 - **A grant can bound a start by role**, and a brief by its length in
   characters. The role is a bound of the `prefix` kind: a role's name cannot
   hold the separator, so the bound matches it exactly, and the contract needs
@@ -1047,6 +1060,72 @@ ruleset. Every agent's rules start by allowing everything.
   were sent, the result still says of each reply whether it was sent, and
   gives the error in place of the run.
 
+### Steering, interrupting and forking
+
+The service delivers a prompt marked as a steer at the session's next step,
+after the tool calls in flight, and starts a turn with one sent to a session
+that has stopped. Its interrupt stops one session. When a subagent or a
+background command ends, its report goes to the session that started it and
+wakes that session, also one that was interrupted.
+
+- **A steer never starts a turn.** It is sent so that it does not wake its
+  session. A turn the tools start is set up first: its agent, its model, its
+  ruleset and its binding. One a steer started would run on whatever the
+  session was left with, and under the steer's class, which is not a write
+  run's.
+- **A steer needs a session of the run in the service's active set**, a
+  paused one included, and is refused otherwise as `invalid_argument` with
+  the reason `not_running`: by the tool's `gate`, which reads the service as
+  the reply tool's does, and again when it runs.
+- **A steer whose turn ended before reading it is withdrawn, and the call is
+  refused as one to a run that is not running.** The tool looks once after
+  it has sent: a message that waits while nothing of the run is active would
+  arrive with a later turn nobody connects with it.
+- **A steer's result says when the run reads it**: read already, at its next
+  step, or once the request it is paused on is answered. The call does not
+  wait for that.
+- **A steer goes to the run's own session.** A subagent is steered by its
+  parent, which the message reaches.
+- **An interrupt stops the whole run**: its session, its subagents' sessions
+  and the commands it moved to the background. A run of which a part still
+  works is not stopped, and reads as `running`.
+- **Subagents and background commands are stopped before the run's own
+  session**, the deepest session first. Stopped the other way round, the
+  report of the first child to end starts the parent again.
+- **An interrupt looks again until nothing of the run is active**, and stops
+  again what has become active: a report can arrive after its session was
+  stopped. It looks for 20 seconds at most, within the call's time; a
+  session settles within a second, and a tool has five to stop on its own.
+  Where something is still active then, the result says `running` and
+  `timed_out`.
+- **An interrupt withdraws the caller's messages the run has not read**, and
+  says how many. They were written for the turn that was stopped, and the
+  service would deliver them with the next. What the service put into the
+  inbox itself, such as a subagent's report, stays.
+- **An interrupt rolls nothing back, and its result says so**: files,
+  commits and whatever left the machine stay as the run left them. The
+  service's revert routes are not used, nor is its option to go on with the
+  pending steers after a stop.
+- **An interrupt of a run with nothing active stops nothing and is no
+  error.** The run may have ended a moment before, and a second interrupt is
+  the same as the first.
+- **A fork needs a run with nothing active**, and is refused otherwise as
+  `invalid_argument` with the reason `running`. The service forks a running
+  session and leaves the turn in flight out: the copy would end on a brief
+  without an answer.
+- **A fork is bound as its source is, without the start's mark.** The
+  service copies a session's metadata as it is. The tool writes the binding
+  again and reads the session back; where that fails it removes the copy,
+  so no session stays that looks like a start in progress.
+- **A fork shares its source's worktree**, with its rules, its agent, its
+  model and its instruction entries, and holds no turn of its own until it
+  is started. A read says of a run that it is a fork, and of which session.
+  A fork from an earlier message is not offered.
+- **A start can begin on a fork**: `fork` with a `session`, on either start
+  tool. The copy is made first, then set up as a continued session under
+  the role given, so a session that planned can be built on twice. A start
+  that fails after the copy removes it.
+
 ### What a run is told
 
 - **The operating note says only what the tools make true**: another agent
@@ -1056,6 +1135,24 @@ ruleset. Every agent's rules start by allowing everything.
   consumer speaks to a run is its own.
 - **The note is an instruction entry of the session**, so the brief a person
   reads in OpenCode is the brief alone.
+- **An instruction entry is told to the agent once and kept**: at the head
+  of the session's first turn, or where it changes later, as a message of
+  the service at the session's next step. A fork has its source's entries.
+  **A subagent's session has none**: what an entry says reaches a subagent
+  only through its parent.
+- **A caller's entry is `opencode-tools.<name>`, given whole**, the name of
+  lower-case letters, digits, `_` and `-`, at most 40 characters. The key
+  is what the agent reads beside the value, so a result names the key the
+  agent was told. Any other key is refused as `invalid_argument`, and
+  `opencode-tools.note` as `forbidden`: a start writes it again.
+- **A value is a text of at most 8000 characters**, and a session holds at
+  most 20 entries of the package. The service takes any JSON of 256 KiB;
+  every entry is in front of the agent at every step.
+- **The instruction tools show the package's entries only.** A session can
+  hold a person's or a plugin's under other keys: they are counted, and
+  their values are not the caller's to read.
+- **A set that changes nothing says so**, since the service tells the agent
+  nothing then, and a remove of a key that is not there is no error.
 
 ### State and waiting
 
@@ -1081,7 +1178,11 @@ ruleset. Every agent's rules start by allowing everything.
 - **A turn that stopped without its end is `interrupted`**, and the result
   says that OpenCode takes it up again when the service next starts. A
   request rejected without a message leaves a turn so, and so does a service
-  that stopped.
+  that stopped. A turn an interrupt stopped has its end written: it is
+  `interrupted` too, and is not taken up again.
+- **A run that has ended can run again with no start.** The report of a
+  background command or a subagent that ends wakes its session, which takes
+  a turn of its own. A read shows what the service shows then.
 - **A turn that has just begun or just ended can show neither for a moment.**
   For 30 seconds after its newest message it counts as `running`.
 - **`unknown` is a brief whose admission could not be confirmed, or a session
@@ -1143,7 +1244,10 @@ ruleset. Every agent's rules start by allowing everything.
   pass. A rejection takes the other pending requests of its step, one
   without a reason takes the session out of the active set with no end
   written, and a request or a form that is gone, settled or another
-  session's answers with the service's own status and error.
+  session's answers with the service's own status and error. A prompt to a
+  session that runs waits for its next step, an interrupt stops one session
+  and leaves its children and its inbox, the report of what ended wakes a
+  session that had stopped, and a fork copies the metadata whole.
 - **The tool context has an optional `runtime`**: the environment, the clock,
   how the service is found, the `fetch` its requests go through and how a
   program is left running. An entry point leaves it out and gets the real
