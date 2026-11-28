@@ -78,6 +78,11 @@ export async function createSession(service: ServiceConnection, setup: SessionSe
   return sessionOf(created).id
 }
 
+/** Forks the session `sessionID` and returns the copy, as the service holds it: bound as its source is, mark included, and with no turn of its own. */
+export async function forkSession(service: ServiceConnection, sessionID: string): Promise<SessionEntry> {
+  return sessionOf(await service.client.session.fork({ sessionID }))
+}
+
 /**
  * Sets a session that is continued up again: its agent and its model where
  * they differ, then its ruleset and its binding with a fresh mark. Every other
@@ -125,7 +130,7 @@ export async function readBack(
   )
 }
 
-/** Removes the session a start just created, when the start cannot go on. Its own failure is ignored: the start's is the one to report. */
+/** Removes the session a start just created or forked, when the start cannot go on. Its own failure is ignored: the start's is the one to report. */
 export async function removeSession(service: ServiceConnection, sessionID: string): Promise<void> {
   try {
     await service.client.session.remove({ sessionID })

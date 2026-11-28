@@ -13,7 +13,7 @@ import { ownedSession } from "./owned"
 import type { StartInput } from "./start.schemas"
 import { readWorktree, refuseProtected, type Worktree } from "./worktree"
 
-/** Where a start works: the worktree, the directory the service knows the session by and, for a continued session, the session. */
+/** Where a start works: the worktree, the directory the service knows the session by and, for a continued or forked session, the session that is continued or copied. */
 export type StartTarget = { worktree: Worktree; directory: string; session?: SessionEntry }
 
 const LEFT_THE_WORKTREE = "its directory is no longer the top level of a worktree"
@@ -46,17 +46,20 @@ export async function newTarget(
   return { worktree, directory: worktree.directory }
 }
 
+/** The target of a run's own session: the session and its binding, and the worktree it is still bound to. */
+export type BoundTarget = Required<StartTarget> & { binding: Binding }
+
 /**
- * The worktree of a run that is continued. The session is read again and its
+ * The worktree of a run's own session. The session is read again and its
  * directory with git, since an agent can move its session: one that has left
- * the worktree, repository or branch it was bound to is `stale`.
+ * the worktree, repository or branch it was bound to is `stale`. No policy is
+ * checked.
  */
-export async function continuedTarget(
+export async function boundTarget(
   service: ServiceConnection,
   sessionID: string,
   ctx: ToolContext,
-  policy: Policy,
-): Promise<StartTarget> {
+): Promise<BoundTarget> {
   const { session, binding } = await ownedSession(service, sessionID, ctx.caller)
   const stale = (what: string) =>
     new ToolError(
@@ -74,6 +77,17 @@ export async function continuedTarget(
   }
   const left = leftBecause(binding, worktree)
   if (left !== undefined) throw stale(left)
+  return { worktree, directory: session.directory, session, binding }
+}
+
+/** The worktree of a run that is continued: that of its session, and for a write run not a protected one. */
+export async function continuedTarget(
+  service: ServiceConnection,
+  sessionID: string,
+  ctx: ToolContext,
+  policy: Policy,
+): Promise<StartTarget> {
+  const { worktree, directory, session } = await boundTarget(service, sessionID, ctx)
   if (policy === "write") await refuseProtected(worktree, protectedDirsOf(ctx.options))
-  return { worktree, directory: session.directory, session }
+  return { worktree, directory, session }
 }
