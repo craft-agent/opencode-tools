@@ -216,7 +216,7 @@ setting.
 | `opencode_run_start`       | add       | starts or continues a run under a role whose policy is `read-only`       |
 | `opencode_run_start_write` | overwrite | starts or continues a run under a role whose policy is `write`           |
 | `opencode_run_steer`       | add       | adds a message to a running turn                                         |
-| `opencode_run_interrupt`   | overwrite | stops a running turn; nothing is rolled back                             |
+| `opencode_run_interrupt`   | overwrite | stops a run with its subagents and background commands; no rollback      |
 | `opencode_run_fork`        | add       | copies an idle session, with its binding                                 |
 
 A start takes a `role`, a `brief`, and either a `directory` for a new
@@ -225,7 +225,40 @@ Git worktree. The call sets the session up with the role's agent, model and
 rules, reads it back, and sends the brief only when the service reports the
 session as it was set up. It returns once the brief is admitted and does not
 wait for the turn. A session can change its role between turns: one that
-planned can go on to build, through the write tool.
+planned can go on to build, through the write tool. With `fork` and a
+`session`, a start copies the session first and runs on the copy, which it
+removes again when it cannot go on; the session itself is not written to.
+
+A run that works is corrected, stopped and copied by three tools, each of
+which takes the run's `session`:
+
+- **`opencode_run_steer` never starts a turn.** OpenCode delivers a steer at
+  the session's next step, after the tool calls in flight, and starts a turn
+  with one sent to a session that has stopped. So the message is sent in the
+  form that does not wake a session, a run with nothing active is refused
+  (reason `not_running`), and a message whose turn ended before reading it is
+  withdrawn. The result says `when` the run reads it: `read`, `next_step`, or
+  `after_request` for a run paused on a request of its own.
+- **`opencode_run_interrupt` stops the whole run.** OpenCode's own interrupt
+  stops one session, and neither its subagents nor the commands it moved to
+  the background; and the report of a subagent or a command that ends wakes
+  the session that started it, also one that was just stopped. So what is
+  below the run's own session is stopped first, the run's own session after
+  it, and the call looks again until nothing is active, for 20 seconds at
+  most (`timed_out`). The caller's unread messages are withdrawn and
+  counted.
+- **An interrupt rolls nothing back**, and its result says so: files,
+  commits and whatever left the machine stay as the run left them.
+- **Background commands are stopped through an experimental route of
+  OpenCode.** On a service without it the sessions are stopped all the same
+  and the result says `background_unchecked`.
+- **`opencode_run_fork` copies an idle run's session**: its history, in the
+  same worktree, bound to the same caller and role. OpenCode copies a
+  session's metadata as it is, so the tool writes the binding again without
+  the mark of the start that made the source, reads the copy back, and
+  removes it where that fails. A run with something active is refused: the
+  copy would end on a brief without an answer. A read gives `forked_from`
+  for a run that is a copy.
 
 `opencode_run_read` follows a run by its `method`:
 
@@ -238,7 +271,9 @@ planned can go on to build, through the write tool.
 | `changes`  | the files the newest turn changed, with line counts, and their patches on request |
 
 A run's state is read from the service each time; the tools keep no record
-of a run.
+of a run. A run that has ended can run again with no start: when a command
+it left in the background ends, or a subagent of it does, OpenCode wakes
+the session with the report.
 
 | State         | Means                                                                                        |
 | ------------- | -------------------------------------------------------------------------------------------- |
