@@ -325,6 +325,32 @@ each a request and a decision:
 | `opencode_instruction_set`    | overwrite | sets an entry the session keeps across its turns |
 | `opencode_instruction_remove` | overwrite | removes an entry                                 |
 
+An instruction entry is a text OpenCode keeps on a session beside a key and
+puts in front of its agent at every turn. The agent is told once of an entry
+that is set, changed or removed: at the session's next step while it works,
+else at the head of its next turn. A brief does not have to repeat what an
+entry says.
+
+- **A caller's key is `opencode-tools.<name>`**, given whole, the name of
+  lower-case letters, digits, `_` and `-`, at most 40 characters. A value is a
+  text of at most 8000 characters, and a session holds at most 20 entries of
+  the package.
+- **`opencode-tools.note` is the operating note**, which every start writes.
+  A caller reads it, and can neither set nor remove it.
+- **The tools show the package's entries only.** A session can hold a
+  person's or a plugin's under other keys: `list` counts them and shows
+  neither their keys nor their values.
+- **An entry is a request to the agent, not a rule.** Nothing stops a command
+  that goes against it; what a run may not do is its ruleset's to deny.
+- **A subagent is not told.** A subagent's session has no entries, so an
+  entry reaches it only through the run that starts it. A fork has its
+  source's entries.
+- **The entries are an experimental route of OpenCode.** On a service
+  without it the three tools fail as `upstream_error`, and the operating
+  note goes at the head of each brief instead.
+- A set that changes nothing sends nothing and says so, and a remove of a
+  key that is not there is no error.
+
 ### `history`
 
 | Tool                    | Class | Does                                                                |
