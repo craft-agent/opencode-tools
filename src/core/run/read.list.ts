@@ -70,6 +70,7 @@ export async function readList(
       entries.push({
         session: session.id,
         ...(title !== "" && { title }),
+        ...(session.forkedFrom !== undefined && { forked_from: session.forkedFrom }),
         role: binding.role,
         directory: session.directory,
         branch: binding.branch,

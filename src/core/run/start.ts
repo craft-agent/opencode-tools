@@ -4,6 +4,7 @@ import { modelText, type Policy, type Role } from "../role"
 import { runtimeOf } from "../runtime"
 import { withService, type ServiceConnection } from "../service/connect"
 import { loadLocation } from "../service/location"
+import type { SessionEntry } from "../service/reply"
 import type { ToolContext } from "../tool"
 import { noteFor } from "./note"
 import { noteOf } from "./options"
@@ -14,6 +15,7 @@ import { UNCONFIRMED_ADMISSION, placeNote, sendBrief, textOf } from "./start.pro
 import type { NotePlace, StartInput, StartOutput, StartState } from "./start.schemas"
 import {
   createSession,
+  forkSession,
   reconfigureSession,
   readBack,
   removeSession,
@@ -31,8 +33,11 @@ type StartCall = { args: StartInput; ctx: ToolContext; policy: Policy; name: str
  * service is contacted; then the role is resolved, the session is created (or
  * set up again), read back and checked against what was set up, looked
  * at for another start's mark, given the operating note and sent the brief.
- * Until the brief is sent, a start that gives up takes back what it did: a
- * session it created is removed, one it continued is unmarked.
+ * A start on a fork (`fork`) checks the session it copies as a continue does,
+ * then copies it and sets the copy up as a continued session; the session
+ * itself is never written to. Until the brief is sent, a start that gives up
+ * takes back what it did: a session it created, or a copy it made, is
+ * removed, one it continued is unmarked.
  */
 export async function startRun(args: StartInput, ctx: ToolContext, policy: Policy): Promise<StartOutput> {
   const deadline = startDeadline(ctx)
@@ -50,36 +55,57 @@ export async function startRun(args: StartInput, ctx: ToolContext, policy: Polic
   )
 }
 
+/**
+ * Creates the session of a new run, or sets `session` up again: the session
+ * that is continued, or its copy, which is removed where that fails.
+ */
+async function setUpSession(
+  service: ServiceConnection,
+  setup: SessionSetup,
+  session: SessionEntry | undefined,
+  copied: boolean,
+): Promise<string> {
+  if (session === undefined) return createSession(service, setup)
+  try {
+    await reconfigureSession(service, session, setup)
+  } catch (error) {
+    if (copied) await removeSession(service, session.id)
+    throw error
+  }
+  return session.id
+}
+
 /** The steps of a start once the service is connected and the worktree is known. */
 async function proceed(service: ServiceConnection, target: StartTarget, call: StartCall): Promise<StartOutput> {
   const { args, ctx, policy, name, role } = call
-  const { worktree, directory, session } = target
+  const { worktree, directory, session: source } = target
   await loadLocation(service, directory, ctx)
   const resolved = await resolveStartRole(service, directory, name, role)
-  await refuseBusy(service, { policy, worktree, session })
+  await refuseBusy(service, { policy, worktree, session: source })
 
+  const ruleset = await rulesetFor(service, policy, ctx)
+  const binding = bindingFor(ctx, name, worktree)
+  const note = noteFor(policy, noteOf(ctx.options), role.note)
+
+  const copy = args.fork === true && source !== undefined ? await forkSession(service, source.id) : undefined
+  const forked = copy !== undefined
+  const session = copy ?? source
+  // A copy is a session this call made, as a new one is, though it is set up as a continued one is.
+  const created = session === undefined || forked
   const setup: SessionSetup = {
     agent: resolved.agent,
     model: modelOfStart(role, resolved.model, session),
-    ruleset: await rulesetFor(service, policy, ctx),
-    binding: bindingFor(ctx, name, worktree),
+    ruleset,
+    binding,
     directory,
   }
-  const note = noteFor(policy, noteOf(ctx.options), role.note)
 
-  let sessionID: string
-  if (session === undefined) {
-    sessionID = await createSession(service, setup)
-  } else {
-    await reconfigureSession(service, session, setup)
-    sessionID = session.id
-  }
-  const takeBack = () =>
-    session === undefined ? removeSession(service, sessionID) : unmarkSession(service, session, setup)
+  const sessionID = await setUpSession(service, setup, session, forked)
+  const takeBack = () => (created ? removeSession(service, sessionID) : unmarkSession(service, session, setup))
 
   let place: NotePlace
   try {
-    await readBack(service, sessionID, setup, session !== undefined)
+    await readBack(service, sessionID, setup, !created)
     await refuseRivalStart(service, directory, sessionID, runtimeOf(ctx).now())
     place = await placeNote(service, sessionID, note)
   } catch (error) {
@@ -96,7 +122,8 @@ async function proceed(service: ServiceConnection, target: StartTarget, call: St
   }
   return {
     session: sessionID,
-    new: session === undefined,
+    new: created,
+    ...(forked && source !== undefined && { forked_from: source.id }),
     role: name,
     agent: setup.agent,
     policy,

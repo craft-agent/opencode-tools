@@ -8,7 +8,7 @@ import { defineTool, type ToolSpec } from "../tool"
 import { ownedSession } from "./owned"
 import { startRun } from "./start"
 import { START_TOOL_IDS, checkStart } from "./start.checks"
-import { MAX_BRIEF, startInput, startOutput } from "./start.schemas"
+import { MAX_BRIEF, startInput, startOutput, type StartInput } from "./start.schemas"
 
 /** The role's own model as written, else what a run without one gets. */
 const MODEL_UNNAMED = "the agent's, else the service's default"
@@ -16,10 +16,18 @@ const MODEL_UNNAMED = "the agent's, else the service's default"
 const MODEL_KEPT = "the session's own"
 /** The `Session` fact of a new session. */
 const SESSION_NEW = "new"
+/** What the `Session` fact of a start on a fork says before the id of the session it copies. */
+const SESSION_FORKED = "a fork of"
 
 /** The model fact: what the role says, or what stands where it names none. */
 function modelFact(role: Role, session: string | undefined): string {
   return role.model ?? (session === undefined ? MODEL_UNNAMED : MODEL_KEPT)
+}
+
+/** The `Session` fact: a new session, the one that is continued, or the one that is forked. */
+function sessionFact(args: StartInput): string {
+  if (args.session === undefined) return SESSION_NEW
+  return args.fork === true ? `${SESSION_FORKED} ${args.session}` : args.session
 }
 
 function descriptionOf(policy: Policy): string {
@@ -31,6 +39,8 @@ function descriptionOf(policy: Policy): string {
     `\`brief\` is the message that starts the run, 1 to ${MAX_BRIEF} characters. ` +
     "`directory` starts a new session there: an absolute path, the top level of a Git worktree, and the call's working directory when left out. " +
     "`session` continues the session of an earlier start instead, which takes the role's agent and ruleset and its model when the role names one; give one of the two, not both. " +
+    "`fork` true with `session` starts on a copy of that session instead: the copy is set up as a continued session is, so its role may differ from the source's, and `session` is the copy, `forked_from` the source, and `new` true. " +
+    "The source must be idle and stays as it was; a start that fails after the copy was made removes the copy. " +
     (policy === "write"
       ? "The run may edit files inside its worktree, and starts only while no other session is running there. "
       : "The run has no edit tools and is denied the git commands that write; it keeps its shell. ") +
@@ -74,7 +84,7 @@ function startToolOf(policy: Policy): ToolSpec<typeof startInput, typeof startOu
           { label: "Agent", value: role.agent },
           { label: "Policy", value: role.policy },
           { label: "Model", value: modelFact(role, args.session) },
-          { label: "Session", value: args.session ?? SESSION_NEW },
+          { label: "Session", value: sessionFact(args) },
         ],
         text: { label: "Brief", body: args.brief },
       }

@@ -22,6 +22,32 @@ export type BusyCheck = {
 }
 
 /**
+ * Refuses `what`, a call that needs the run of `session` idle, when a session
+ * of the run (itself or a subagent of it) is among `active`.
+ */
+async function refuseRunningIn(
+  service: ServiceConnection,
+  active: readonly SessionEntry[],
+  session: SessionEntry,
+  what: string,
+): Promise<void> {
+  const known = new Map(active.map((entry) => [entry.id, entry]))
+  const lookup = async (id: string) => known.get(id) ?? (await sessionIfThere(service, id))
+  for (const entry of active) {
+    if (await inRun(entry, session.id, lookup)) {
+      throw new ToolError("invalid_argument", `Session ${cleaned(session.id)} is running; ${what} needs it idle.`, {
+        details: { reason: "running" },
+      })
+    }
+  }
+}
+
+/** Refuses `what`, a call that needs the run of `session` idle, while a session of the run is in the service's active set. */
+export async function refuseRunning(service: ServiceConnection, session: SessionEntry, what: string): Promise<void> {
+  await refuseRunningIn(service, await activeSessions(service), session, what)
+}
+
+/**
  * Refuses a start the service's running sessions rule out: a continued
  * session that is running (itself or a subagent of it), and for a write run
  * another session running in its worktree, whoever it belongs to. A new
@@ -31,20 +57,9 @@ export async function refuseBusy(service: ServiceConnection, check: BusyCheck): 
   const { policy, worktree, session } = check
   if (session === undefined && policy === "read-only") return
   const active = await activeSessions(service)
-  const known = new Map(active.map((entry) => [entry.id, entry]))
-  const lookup = async (id: string) => known.get(id) ?? (await sessionIfThere(service, id))
-
-  const others: SessionEntry[] = []
-  for (const entry of active) {
-    if (session !== undefined && (await inRun(entry, session.id, lookup))) {
-      throw new ToolError("invalid_argument", `Session ${cleaned(session.id)} is running; a start needs it idle.`, {
-        details: { reason: "running" },
-      })
-    }
-    others.push(entry)
-  }
+  if (session !== undefined) await refuseRunningIn(service, active, session, "a start")
   if (policy === "write") {
-    for (const entry of others) {
+    for (const entry of active) {
       if ((await realOrGiven(entry.directory)) === worktree.directory) {
         throw new ToolError(
           "invalid_argument",

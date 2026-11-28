@@ -38,12 +38,19 @@ export const startInput = z.object({
     .max(MAX_ID)
     .optional()
     .describe("The id of a session an earlier start returned, to continue it. Not with `directory`."),
+  fork: z
+    .boolean()
+    .optional()
+    .describe("With `session`: start on a copy of that session instead of continuing it; the session stays as it was."),
 })
 
 /** The result of both start tools. */
 export const startOutput = z.object({
-  session: z.string().describe("The run's session."),
-  new: z.boolean().describe("True for a session this call created, false for one it continued."),
+  session: z.string().describe("The run's session: the copy, for a start on a fork."),
+  new: z
+    .boolean()
+    .describe("True for a session this call created, a copy of another included, false for one it continued."),
+  forked_from: z.string().optional().describe("A start on a fork: the session that was copied, which stays as it was."),
   role: z.string(),
   agent: z.string().describe("The OpenCode agent the role runs."),
   policy: z.enum(["read-only", "write"]),

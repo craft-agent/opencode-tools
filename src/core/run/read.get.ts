@@ -76,6 +76,7 @@ export async function describeRun(
     service_started: service.started,
     session: root.id,
     ...(title !== "" && { title }),
+    ...(root.forkedFrom !== undefined && { forked_from: root.forkedFrom }),
     role: binding.role,
     ...(root.agent !== undefined && { agent: lineOf(root.agent, MAX_RUN_NAME) }),
     ...(root.model !== undefined && { model: lineOf(modelText(root.model), MAX_ID) }),

@@ -58,6 +58,19 @@ describe("the two start tools", () => {
         expect(spec.description).toContain(text)
       }
     }
+    for (const spec of [opencodeRunStart, opencodeRunStartWrite]) {
+      for (const text of [
+        "`fork` true with `session` starts on a copy of that session",
+        "its role may differ from the source's",
+        "`forked_from` the source",
+        "The source must be idle and stays as it was",
+        "removes the copy",
+      ]) {
+        expect(spec.description).toContain(text)
+      }
+      expect(spec.input.safeParse({ role: "plan", brief: BRIEF, session: "ses_x", fork: true }).success).toBe(true)
+      expect(spec.input.safeParse({ role: "plan", brief: BRIEF, fork: "yes" }).success).toBe(false)
+    }
     expect(opencodeRunStartWrite.description).toContain("edit files inside its worktree")
     expect(opencodeRunStart.description).not.toContain("edit files inside")
     expect(opencodeRunStart.description).toContain("opencode_run_start_write")
@@ -151,6 +164,16 @@ describe("describe", () => {
       label: "Model",
       value: "the session's own",
     })
+  })
+
+  test("says that the run starts on a fork, and of which session", async () => {
+    const { ctx } = await startSetup()
+    const args = { role: "plan", brief: BRIEF, session: "ses_mine", fork: true }
+    const description = await wholeCallDescription(opencodeRunStart, args, ctx)
+    expect(description?.facts).toContainEqual({ label: "Session", value: "a fork of ses_mine" })
+    expect(description?.facts).toContainEqual({ label: "Model", value: "the session's own" })
+    const continued = await wholeCallDescription(opencodeRunStart, { ...args, fork: false }, ctx)
+    expect(continued?.facts).toContainEqual({ label: "Session", value: "ses_mine" })
   })
 
   test("gives no description for a role that is not configured", async () => {
